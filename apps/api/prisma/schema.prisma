@@ -1,0 +1,2210 @@
+// ════════════════════════════════════════════════════════════════════════
+//  Kormo HR — data model
+//  Multi-tenant (multi-company + multi-location, row-level scoped) HRMS
+//  covering the full employee lifecycle: onboarding → profile → attendance
+//  → leave → payroll/tax → performance → field force → resignation.
+//
+//  Naming: Prisma fields are camelCase, physical columns snake_case via
+//  @map so the SQL surface reads like the DDL spec.
+// ════════════════════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  ENUMS
+// ════════════════════════════════════════════════════════════════════════
+
+enum EmploymentStatus {
+  PERMANENT
+  PROBATION
+  CONTRACT
+  INTERN
+  SEPARATED
+}
+
+enum EmploymentType {
+  MANAGEMENT
+  STAFF
+  WORKER
+}
+
+enum PayrollType {
+  SALARIED
+  HOURLY
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  DIVORCED
+  WIDOWED
+}
+
+enum BloodGroup {
+  A_POS
+  A_NEG
+  B_POS
+  B_NEG
+  AB_POS
+  AB_NEG
+  O_POS
+  O_NEG
+}
+
+enum AddressKind {
+  PRESENT
+  PERMANENT
+}
+
+enum SalaryChangeStatus {
+  JOINING
+  INCREMENT
+  PROMOTION
+  DEMOTION
+  ADJUSTMENT
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+  WEEKEND
+  CONDITIONAL_WEEKEND
+  HOLIDAY
+  LEAVE
+  AFL // absent-for-leave: unapproved absence charged against leave
+  HALF_DAY
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum LeaveDayPart {
+  FULL_DAY
+  FIRST_HALF
+  SECOND_HALF
+}
+
+enum GenderRestriction {
+  NONE
+  MALE_ONLY
+  FEMALE_ONLY
+}
+
+enum PayrollRunStatus {
+  DRAFT
+  PROCESSING
+  REVIEW
+  APPROVED
+  PAID
+  LOCKED
+}
+
+enum SalaryComponentCalc {
+  PCT_OF_GROSS
+  PCT_OF_BASIC
+  FIXED
+  FORMULA
+}
+
+enum TaxpayerCategory {
+  GENERAL
+  FEMALE
+  SENIOR_CITIZEN
+  DISABLED
+  GAZETTED_FREEDOM_FIGHTER
+  THIRD_GENDER
+}
+
+enum GoalStatus {
+  DRAFT
+  ACTIVE
+  SUBMITTED
+  IN_REVIEW
+  COMPLETED
+  CANCELLED
+}
+
+enum ReviewStage {
+  SELF_ASSESSMENT
+  MANAGER_REVIEW
+  HR_REVIEW
+  CALIBRATION
+  COMPLETED
+}
+
+enum ConfirmationDecision {
+  PENDING
+  CONFIRMED
+  EXTENDED
+  TERMINATED
+}
+
+enum OnboardingLane {
+  EMPLOYEE
+  HR
+  IT
+  MANAGER
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  SKIPPED
+  BLOCKED
+}
+
+enum ResignationStage {
+  DRAFT
+  SUBMITTED
+  LM_APPROVAL
+  HR_APPROVAL
+  CLEARANCE
+  COMPLETED
+  WITHDRAWN
+  REJECTED
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+  PENDING
+}
+
+enum MealStatus {
+  SCHEDULED
+  TAKEN
+  CANCELLED
+  NOT_TAKEN
+}
+
+enum TrackingSessionStatus {
+  ONGOING
+  COMPLETED
+  ABANDONED
+}
+
+enum ContactLevel {
+  A_PLUS
+  A
+  B
+  C
+  D
+}
+
+enum ChangeRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ReportStatus {
+  QUEUED
+  RUNNING
+  READY
+  FAILED
+}
+
+enum NotificationKind {
+  LEAVE
+  ATTENDANCE
+  PAYROLL
+  PERFORMANCE
+  ONBOARDING
+  RESIGNATION
+  BOOKING
+  ANNOUNCEMENT
+  APPROVAL
+  SYSTEM
+}
+
+enum HelpdeskStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum HelpdeskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  TENANCY & ORG STRUCTURE
+// ════════════════════════════════════════════════════════════════════════
+
+model Company {
+  id           Int      @id @default(autoincrement()) @map("company_id")
+  name         String
+  alias        String   @unique
+  legalName    String?  @map("legal_name")
+  logoPath     String?  @map("logo_path")
+  tin          String?
+  bin          String?
+  address      String?
+  contactEmail String?  @map("contact_email")
+  contactPhone String?  @map("contact_phone")
+  timezone     String   @default("Asia/Dhaka")
+  currency     String   @default("BDT")
+  fiscalYearStartMonth Int @default(7) @map("fiscal_year_start_month") // Bangladesh FY: July
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  locations         Location[]
+  departments       Department[]
+  designations      Designation[]
+  employees         Employee[]
+  shifts            Shift[]
+  rosters           AttendanceRoster[]
+  leaveTypes        LeaveType[]
+  leavePolicies     LeavePolicy[]
+  holidays          Holiday[]
+  salaryComponents  SalaryComponent[]
+  payrollRuns       PayrollRun[]
+  notices           Notice[]
+  policies          OfficePolicy[]
+  features          CompanyFeature[]
+  roles             Role[]
+  foodPrograms      FoodProgram[]
+  goalCycles        GoalCycle[]
+  customers         Customer[]
+  rooms             Room[]
+  onboardingTemplates OnboardingTemplate[]
+  clearanceDepartments ClearanceDepartment[]
+  accessGrants      EmployeeCompanyAccess[]
+  attendances       Attendance[]
+  reportJobs        ReportJob[]
+  helpdeskTickets   HelpdeskTicket[]
+
+  @@map("company")
+}
+
+/// Per-tenant feature switches. The client uses these as UI hints only —
+/// every request is still re-authorised server-side.
+model CompanyFeature {
+  id        Int      @id @default(autoincrement())
+  companyId Int      @map("company_id")
+  key       String   // e.g. hasFoodProgramSubscription, hasOnboardingFlowAccess
+  enabled   Boolean  @default(false)
+  config    Json?
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, key])
+  @@map("company_feature")
+}
+
+model Location {
+  id         Int      @id @default(autoincrement()) @map("location_id")
+  companyId  Int      @map("company_id")
+  name       String
+  alias      String
+  address    String?
+  city       String?
+  lat        Float?
+  lng        Float?
+  /// Radius in metres for geofenced attendance punches.
+  geofenceM  Int?     @map("geofence_m")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employees   Employee[]
+  holidays    Holiday[]
+  rooms       Room[]
+  attendances Attendance[]
+
+  @@unique([companyId, alias])
+  @@index([companyId])
+  @@map("location")
+}
+
+model Department {
+  id                 Int      @id @default(autoincrement()) @map("department_id")
+  companyId          Int      @map("company_id")
+  name               String
+  code               String?
+  parentDepartmentId Int?     @map("parent_department_id")
+  headEmployeeId     BigInt?  @map("head_employee_id")
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  company    Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent     Department?  @relation("DeptTree", fields: [parentDepartmentId], references: [id], onDelete: SetNull)
+  children   Department[] @relation("DeptTree")
+  employees  Employee[]
+  clearances ClearanceDepartment[]
+
+  @@unique([companyId, name])
+  @@index([parentDepartmentId])
+  @@map("department")
+}
+
+model Designation {
+  id        Int      @id @default(autoincrement()) @map("designation_id")
+  companyId Int      @map("company_id")
+  name      String
+  /// Pay grade label as printed on letters, e.g. "5b".
+  grade     String?
+  /// Numeric seniority rung, used for promotion validation & org charts.
+  level     Int      @default(0)
+  isActive  Boolean  @default(true) @map("is_active")
+
+  company           Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employees         Employee[]
+  promotionHistory  PromotionHistory[]
+
+  @@unique([companyId, name])
+  @@map("designation")
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  AUTH & RBAC
+// ════════════════════════════════════════════════════════════════════════
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  companyId   Int?     @map("company_id") // null = system-wide role
+  key         String
+  name        String
+  description String?
+  /// Flat permission keys, e.g. "leave.approve", "payroll.run".
+  permissions String[]
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  company Company?       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  members EmployeeRole[]
+
+  @@unique([companyId, key])
+  @@map("role")
+}
+
+model EmployeeRole {
+  employeeId BigInt   @map("employee_id")
+  roleId     Int      @map("role_id")
+  grantedAt  DateTime @default(now()) @map("granted_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  role     Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([employeeId, roleId])
+  @@map("employee_role")
+}
+
+/// Cross-company access for shared-services staff (the
+/// `accessible-companies` capability in the reference system).
+model EmployeeCompanyAccess {
+  employeeId BigInt @map("employee_id")
+  companyId  Int    @map("company_id")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([employeeId, companyId])
+  @@map("employee_company_access")
+}
+
+/// Rotating refresh tokens. Only the SHA-256 hash is stored, so a DB leak
+/// does not hand over live sessions. `replacedById` gives us reuse
+/// detection: presenting a rotated token revokes the whole family.
+model RefreshToken {
+  id           String    @id @default(uuid())
+  employeeId   BigInt    @map("employee_id")
+  tokenHash    String    @unique @map("token_hash")
+  familyId     String    @map("family_id")
+  userAgent    String?   @map("user_agent")
+  ip           String?
+  expiresAt    DateTime  @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  replacedById String?   @map("replaced_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@index([familyId])
+  @@map("refresh_token")
+}
+
+model PasswordResetToken {
+  id         String    @id @default(uuid())
+  employeeId BigInt    @map("employee_id")
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  usedAt     DateTime? @map("used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@map("password_reset_token")
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  EMPLOYEE — the core aggregate
+// ════════════════════════════════════════════════════════════════════════
+
+model Employee {
+  id                BigInt  @id @default(autoincrement()) @map("employee_id")
+  /// Human-facing payroll ID printed on cards & letters, e.g. "272".
+  employeeVisibleId String  @unique @map("employee_visible_id")
+  uniqueTag         String? @unique @map("unique_tag")
+  username          String  @unique
+  passwordHash      String  @map("password_hash")
+  mustChangePassword Boolean @default(false) @map("must_change_password")
+  active            Boolean @default(true)
+
+  // ── identity ──────────────────────────────────────────────────────
+  firstName String  @map("first_name")
+  lastName  String  @map("last_name")
+  aliasName String? @map("alias_name")
+
+  // ── contact ───────────────────────────────────────────────────────
+  email           String  @unique
+  officialEmail   String? @map("official_email")
+  personalEmail   String? @map("personal_email")
+  alternateEmail  String? @map("alternate_email")
+  officialContact String? @map("official_contact")
+  alternateNumber String? @map("alternate_number")
+
+  // ── personal ──────────────────────────────────────────────────────
+  fatherName        String?        @map("father_name")
+  motherName        String?        @map("mother_name")
+  /// DOB as printed on the birth certificate (the payroll/legal one).
+  birthDate         DateTime?      @map("birth_date") @db.Date
+  /// Actual DOB, where it differs from the certificate.
+  actualBirthDate   DateTime?      @map("actual_birth_date") @db.Date
+  gender            Gender?
+  nationality       String?        @default("Bangladeshi")
+  countryOfBirth    String?        @map("country_of_birth")
+  religion          String?
+  maritalStatus     MaritalStatus? @map("marital_status")
+  bloodGroup        BloodGroup?    @map("blood_group")
+  spouseName        String?        @map("spouse_name")
+  spouseDateOfBirth DateTime?      @map("spouse_date_of_birth") @db.Date
+
+  // ── statutory IDs ─────────────────────────────────────────────────
+  nidNumber        String? @map("nid_number")
+  tinNumber        String? @map("tin_number")
+  passportNo       String? @map("passport_no")
+  drivingLicenseNo String? @map("driving_license_no")
+  rfid             String? @unique
+
+  // ── employment ────────────────────────────────────────────────────
+  employmentStatus    EmploymentStatus @default(PROBATION) @map("employment_status")
+  employmentType      EmploymentType   @default(STAFF) @map("employment_type")
+  payrollType         PayrollType      @default(SALARIED) @map("payroll_type")
+  joiningDate         DateTime         @map("joining_date") @db.Date
+  probationStartDate  DateTime?        @map("probation_start_date") @db.Date
+  confirmationDate    DateTime?        @map("confirmation_date") @db.Date
+  contractEndDate     DateTime?        @map("contract_end_date") @db.Date
+  /// Notice period the employee owes on resignation.
+  noticePeriodDays    Int              @default(30) @map("notice_period_days")
+  separationDate      DateTime?        @map("separation_date") @db.Date
+
+  // ── org placement ─────────────────────────────────────────────────
+  companyId     Int  @map("company_id")
+  locationId    Int? @map("location_id")
+  departmentId  Int? @map("department_id")
+  designationId Int? @map("designation_id")
+
+  // ── reporting lines ───────────────────────────────────────────────
+  lineManagerId       BigInt? @map("line_manager_id")
+  dottedManager1Id    BigInt? @map("dotted_manager_1_id")
+  dottedManager2Id    BigInt? @map("dotted_manager_2_id")
+  teamLeaderId        BigInt? @map("team_leader_id")
+  headOfDepartmentId  BigInt? @map("head_of_department_id")
+  projectManagerId    BigInt? @map("project_manager_id")
+  referringEmployeeId BigInt? @map("referring_employee_id")
+
+  isLineManager      Boolean @default(false) @map("is_line_manager")
+  isTeamLeader       Boolean @default(false) @map("is_team_leader")
+  isHeadOfDepartment Boolean @default(false) @map("is_head_of_department")
+
+  // ── media & documents ─────────────────────────────────────────────
+  profilePicPath       String? @map("profile_pic_path")
+  thumbnailsPath01     String? @map("thumbnails_path_01")
+  thumbnailsPath02     String? @map("thumbnails_path_02")
+  cvPath               String? @map("cv_path")
+  nidPassPath          String? @map("nid_pass_path")
+  offerLetterPath      String? @map("offer_letter_path")
+  appointmentLetter    String? @map("appointment_letter")
+  aggrementLetterPath  String? @map("aggrement_letter_path")
+  clearanceLetterPath  String? @map("clearance_letter_path")
+
+  // ── policy bindings ───────────────────────────────────────────────
+  attendanceRosterId  Int? @map("attendance_roaster_id")
+  leavePolicyId       Int? @map("leave_policy_id")
+  carryLeavePolicyId  Int? @map("carry_leave_policy_id")
+
+  lastLoginAt DateTime? @map("last_login_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // ── relations: org ────────────────────────────────────────────────
+  company     Company      @relation(fields: [companyId], references: [id])
+  location    Location?    @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  department  Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  designation Designation? @relation(fields: [designationId], references: [id], onDelete: SetNull)
+  roster      AttendanceRoster? @relation(fields: [attendanceRosterId], references: [id], onDelete: SetNull)
+  leavePolicy LeavePolicy?      @relation("EmpLeavePolicy", fields: [leavePolicyId], references: [id], onDelete: SetNull)
+
+  // ── relations: reporting lines (self, named) ───────────────────────
+  lineManager        Employee?  @relation("LineManager", fields: [lineManagerId], references: [id], onDelete: SetNull)
+  directReports      Employee[] @relation("LineManager")
+  dottedManager1     Employee?  @relation("DottedManager1", fields: [dottedManager1Id], references: [id], onDelete: SetNull)
+  dottedReports1     Employee[] @relation("DottedManager1")
+  dottedManager2     Employee?  @relation("DottedManager2", fields: [dottedManager2Id], references: [id], onDelete: SetNull)
+  dottedReports2     Employee[] @relation("DottedManager2")
+  teamLeader         Employee?  @relation("TeamLeader", fields: [teamLeaderId], references: [id], onDelete: SetNull)
+  teamMembers        Employee[] @relation("TeamLeader")
+  headOfDepartment   Employee?  @relation("HeadOfDepartment", fields: [headOfDepartmentId], references: [id], onDelete: SetNull)
+  departmentMembers  Employee[] @relation("HeadOfDepartment")
+  projectManager     Employee?  @relation("ProjectManager", fields: [projectManagerId], references: [id], onDelete: SetNull)
+  projectMembers     Employee[] @relation("ProjectManager")
+  referringEmployee  Employee?  @relation("ReferringEmployee", fields: [referringEmployeeId], references: [id], onDelete: SetNull)
+  referrals          Employee[] @relation("ReferringEmployee")
+
+  // ── relations: owned detail ────────────────────────────────────────
+  roles              EmployeeRole[]
+  companyAccess      EmployeeCompanyAccess[]
+  refreshTokens      RefreshToken[]
+  passwordResets     PasswordResetToken[]
+  addresses          EmployeeAddress[]
+  emergencyContacts  EmployeeEmergency[]
+  nominees           EmployeeNominee[]
+  education          EmployeeEducation[]
+  experience         EmployeeExperience[]
+  documents          EmployeeDocument[]
+  bankAccounts       EmployeeBank[]
+  benefit            EmployeeBenefit?
+  salaryHistory      SalaryHistory[]
+  promotionHistory   PromotionHistory[]
+  changeRequests     ProfileChangeRequest[]  @relation("ChangeRequester")
+  changeReviews      ProfileChangeRequest[]  @relation("ChangeReviewer")
+
+  attendances        Attendance[]
+  rosterAssignments  RosterAssignment[]
+  attendanceEdits    AttendanceEditRequest[] @relation("AttEditRequester")
+  attendanceEditApprovals AttendanceEditRequest[] @relation("AttEditApprover")
+  overtimeRequests   OvertimeRequest[]       @relation("OtRequester")
+  overtimeApprovals  OvertimeRequest[]       @relation("OtApprover")
+  compensationRequests CompensationRequest[] @relation("CompRequester")
+  compensationApprovals CompensationRequest[] @relation("CompApprover")
+  shiftExchangesRaised ShiftExchangeRequest[] @relation("SxRequester")
+  shiftExchangesTarget ShiftExchangeRequest[] @relation("SxCounterparty")
+  shiftExchangeApprovals ShiftExchangeRequest[] @relation("SxApprover")
+
+  leaveBalances      LeaveBalance[]
+  leaveRequests      LeaveRequest[]      @relation("LeaveRequester")
+  leaveApprovals     LeaveRequest[]      @relation("LeaveApprover")
+  leaveCarryForwards LeaveCarryForward[]
+
+  payslips           Payslip[]
+  taxYears           EmployeeTaxYear[]
+  taxPayments        TaxPayment[]
+
+  mealSubscriptions  MealSubscription[]
+  meals              Meal[]
+
+  goals              Goal[]              @relation("GoalOwner")
+  goalReviews        GoalReview[]         @relation("GoalReviewer")
+  confirmationReviews JobConfirmationReview[] @relation("ConfirmationSubject")
+  confirmationReviewsGiven JobConfirmationReview[] @relation("ConfirmationReviewer")
+
+  customerVisits     CustomerVisit[]      @relation("VisitOwner")
+  jointVisits        CustomerVisitParticipant[]
+  trackingSessions   TrackingSession[]
+  trackingConfig     TrackingConfig?
+
+  onboardingTasks    OnboardingTask[]     @relation("OnboardingSubject")
+  onboardingAssigned OnboardingTask[]     @relation("OnboardingAssignee")
+
+  resignations       Resignation[]        @relation("ResignationEmployee")
+  resignationApprovals ResignationApproval[] @relation("ResignationApprover")
+  clearanceItems     ClearanceItem[]      @relation("ClearanceOwner")
+
+  bookings           RoomBooking[]        @relation("BookingOrganiser")
+  bookingInvites     RoomBookingAttendee[]
+
+  notifications      Notification[]
+  helpdeskTickets    HelpdeskTicket[]     @relation("TicketRequester")
+  helpdeskAssigned   HelpdeskTicket[]     @relation("TicketAssignee")
+  auditLogs          AuditLog[]
+  reportJobs         ReportJob[]
+  noticesAuthored    Notice[]             @relation("NoticeAuthor")
+
+  @@index([companyId, active])
+  @@index([lineManagerId])
+  @@index([departmentId])
+  @@index([designationId])
+  @@index([firstName, lastName])
+  @@map("employee")
+}
+
+model EmployeeAddress {
+  id         Int         @id @default(autoincrement())
+  employeeId BigInt      @map("employee_id")
+  kind       AddressKind
+  village    String?
+  buildingNo String?     @map("building_no")
+  streetNo   String?     @map("street_no")
+  city       String?
+  state      String?
+  postalCode String?     @map("postal_code")
+  country    String?     @default("Bangladesh")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, kind])
+  @@map("employee_address")
+}
+
+model EmployeeEmergency {
+  id         Int     @id @default(autoincrement())
+  employeeId BigInt  @map("employee_id")
+  name       String
+  relation   String
+  phone      String
+  email      String?
+  address    String?
+  isPrimary  Boolean @default(true) @map("is_primary")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@map("employee_emergency")
+}
+
+model EmployeeNominee {
+  id         Int      @id @default(autoincrement())
+  employeeId BigInt   @map("employee_id")
+  name       String
+  relation   String
+  /// Percentage share of gratuity / provident fund / insurance payout.
+  sharePct   Decimal  @default(100) @map("share_pct") @db.Decimal(5, 2)
+  nid        String?
+  phone      String?
+  dateOfBirth DateTime? @map("date_of_birth") @db.Date
+  address    String?
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@map("employee_nominee")
+}
+
+model EmployeeEducation {
+  id           Int     @id @default(autoincrement())
+  employeeId   BigInt  @map("employee_id")
+  degree       String
+  institute    String
+  major        String?
+  result       String?
+  passingYear  Int?    @map("passing_year")
+  isHighest    Boolean @default(false) @map("is_highest")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@map("employee_education")
+}
+
+model EmployeeExperience {
+  id               Int       @id @default(autoincrement())
+  employeeId       BigInt    @map("employee_id")
+  companyName      String    @map("company_name")
+  designation      String
+  fromDate         DateTime  @map("from_date") @db.Date
+  toDate           DateTime? @map("to_date") @db.Date
+  responsibilities String?
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@map("employee_experience")
+}
+
+model EmployeeDocument {
+  id         Int      @id @default(autoincrement())
+  employeeId BigInt   @map("employee_id")
+  /// cv | nid | passport | offer_letter | appointment_letter | agreement |
+  /// clearance_letter | resignation_letter | certificate | other
+  kind       String
+  title      String
+  path       String
+  mimeType   String?  @map("mime_type")
+  sizeBytes  Int?     @map("size_bytes")
+  uploadedAt DateTime @default(now()) @map("uploaded_at")
+  expiresAt  DateTime? @map("expires_at") @db.Date
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, kind])
+  @@map("employee_document")
+}
+
+/// Self-service profile edits routed to HR. Which fields an employee may
+/// even attempt is driven by ProfileUpdateConfig.
+model ProfileChangeRequest {
+  id          Int                 @id @default(autoincrement())
+  employeeId  BigInt              @map("employee_id")
+  fieldPath   String              @map("field_path") // e.g. "personalEmail"
+  currentValue String?            @map("current_value")
+  requestedValue String           @map("requested_value")
+  reason      String?
+  status      ChangeRequestStatus @default(PENDING)
+  reviewerId  BigInt?             @map("reviewer_id")
+  reviewNote  String?             @map("review_note")
+  requestedAt DateTime            @default(now()) @map("requested_at")
+  reviewedAt  DateTime?           @map("reviewed_at")
+
+  employee Employee  @relation("ChangeRequester", fields: [employeeId], references: [id], onDelete: Cascade)
+  reviewer Employee? @relation("ChangeReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, status])
+  @@map("profile_change_request")
+}
+
+/// Whitelist of self-editable fields, per company (optionally per employee).
+model ProfileUpdateConfig {
+  id            Int      @id @default(autoincrement())
+  companyId     Int      @map("company_id")
+  /// Null = applies to the whole company.
+  employeeId    BigInt?  @map("employee_id")
+  allowedFields String[] @map("allowed_fields")
+  /// Fields that apply immediately vs. requiring HR approval.
+  autoApprove   String[] @map("auto_approve")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([companyId, employeeId])
+  @@map("profile_update_config")
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  COMPENSATION
+// ════════════════════════════════════════════════════════════════════════
+
+model EmployeeBank {
+  id          Int     @id @default(autoincrement())
+  employeeId  BigInt  @map("employee_id")
+  bankName    String  @map("bank_name")
+  branchName  String? @map("branch_name")
+  accountNo   String  @map("account_no")
+  accountName String? @map("account_name")
+  routingNo   String? @map("routing_no")
+  /// Disbursement instrument code, e.g. "EBLACT" (EBL ACCOUNT FUND TRANSFER).
+  txnType     String? @map("txn_type")
+  isPrimary   Boolean @default(true) @map("is_primary")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@map("employee_bank")
+}
+
+/// The benefit-eligibility matrix. Drives payroll components AND tax:
+/// isTaxApplicable / advanceIncomeTax / hasInvestment feed the tax engine.
+model EmployeeBenefit {
+  employeeId         BigInt  @id @map("employee_id")
+  isTransportUser    Boolean @default(false) @map("is_transport_user")
+  isTaxApplicable    Boolean @default(true)  @map("is_tax_applicable")
+  advanceIncomeTax   Boolean @default(false) @map("advance_income_tax")
+  hasInvestment      Boolean @default(false) @map("has_investment")
+  hasProvidentFund   Boolean @default(false) @map("has_provident_fund")
+  hasLfa             Boolean @default(false) @map("has_lfa")
+  hasGratuity        Boolean @default(false) @map("has_gratuity")
+  hasDormitory       Boolean @default(false) @map("has_dormitory")
+  hasBonus           Boolean @default(true)  @map("has_bonus")
+  hasLifeInsurance   Boolean @default(false) @map("has_life_insurance")
+  hasLunchAllowance  Boolean @default(false) @map("has_lunch_allowance")
+  hasMedicalInsurance Boolean @default(false) @map("has_medical_insurance")
+  hasMobileAllowance Boolean @default(false) @map("has_mobile_allowance")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("employee_benefit")
+}
+
+/// Date-effective salary timeline. The tax engine segments the fiscal year
+/// on these rows, so never mutate history — always append.
+model SalaryHistory {
+  id              Int                @id @default(autoincrement())
+  employeeId      BigInt             @map("employee_id")
+  effectiveFrom   DateTime           @map("effective_from") @db.Date
+  gross           Decimal            @db.Decimal(14, 2)
+  basic           Decimal            @db.Decimal(14, 2)
+  houseRent       Decimal            @default(0) @map("house_rent") @db.Decimal(14, 2)
+  conveyance      Decimal            @default(0) @db.Decimal(14, 2)
+  medical         Decimal            @default(0) @db.Decimal(14, 2)
+  otherAllowance  Decimal            @default(0) @map("other_allowance") @db.Decimal(14, 2)
+  incrementAmount Decimal?           @map("increment_amount") @db.Decimal(14, 2)
+  incrementPct    Decimal?           @map("increment_pct") @db.Decimal(6, 2)
+  allowances      Json?
+  status          SalaryChangeStatus @default(JOINING)
+  remarks         String?
+  createdAt       DateTime           @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, effectiveFrom])
+  @@index([employeeId, effectiveFrom])
+  @@map("salary_history")
+}
+
+model PromotionHistory {
+  id            Int                @id @default(autoincrement())
+  employeeId    BigInt             @map("employee_id")
+  effectiveFrom DateTime           @map("effective_from") @db.Date
+  designationId Int?               @map("designation_id")
+  departmentId  Int?               @map("department_id")
+  companyId     Int?               @map("company_id")
+  fromDesignation String?          @map("from_designation")
+  status        SalaryChangeStatus @default(PROMOTION)
+  remarks       String?
+
+  employee    Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  designation Designation? @relation(fields: [designationId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, effectiveFrom])
+  @@map("promotion_history")
+}
+
+/// Company-configurable earning/deduction structure.
+/// Bangladesh default: Basic 50% | House Rent 30% | Conveyance 10% | Medical 10%.
+model SalaryComponent {
+  id        Int                 @id @default(autoincrement())
+  companyId Int                 @map("company_id")
+  code      String
+  name      String
+  calcType  SalaryComponentCalc @map("calc_type")
+  value     Decimal             @db.Decimal(14, 4)
+  isTaxable Boolean             @default(true) @map("is_taxable")
+  isEarning Boolean             @default(true) @map("is_earning")
+  sortOrder Int                 @default(0) @map("sort_order")
+  isActive  Boolean             @default(true) @map("is_active")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, code])
+  @@map("salary_component")
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  ATTENDANCE & SHIFT
+// ════════════════════════════════════════════════════════════════════════
+
+model Shift {
+  id            Int     @id @default(autoincrement()) @map("shift_id")
+  companyId     Int     @map("company_id")
+  name          String
+  /// Stored as HH:mm so overnight shifts are expressible without a date.
+  startTime     String  @map("start_time")
+  endTime       String  @map("end_time")
+  graceMinutes  Int     @default(15) @map("grace_minutes")
+  breakMinutes  Int     @default(60) @map("break_minutes")
+  isNightShift  Boolean @default(false) @map("is_night_shift")
+  /// Minimum minutes on the clock to count as a full day.
+  fullDayMinutes Int    @default(480) @map("full_day_minutes")
+  halfDayMinutes Int    @default(240) @map("half_day_minutes")
+  colorHex      String? @map("color_hex")
+  isActive      Boolean @default(true) @map("is_active")
+
+  company           Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  rosterAssignments RosterAssignment[]
+  exchangesFrom     ShiftExchangeRequest[] @relation("SxFromShift")
+  exchangesTo       ShiftExchangeRequest[] @relation("SxToShift")
+
+  @@unique([companyId, name])
+  @@map("shift")
+}
+
+model AttendanceRoster {
+  id        Int     @id @default(autoincrement()) @map("roster_id")
+  companyId Int     @map("company_id")
+  name      String
+  /// Repeating pattern, e.g. { "weekends": [5,6], "cycle": ["GEN",...] }.
+  rotationPattern Json? @map("rotation_pattern")
+  isActive  Boolean @default(true) @map("is_active")
+
+  company     Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employees   Employee[]
+  assignments RosterAssignment[]
+
+  @@unique([companyId, name])
+  @@map("attendance_roster")
+}
+
+model RosterAssignment {
+  id         BigInt   @id @default(autoincrement())
+  employeeId BigInt   @map("employee_id")
+  rosterId   Int?     @map("roster_id")
+  date       DateTime @db.Date
+  shiftId    Int?     @map("shift_id")
+  isWeekend  Boolean  @default(false) @map("is_weekend")
+  /// A weekend granted only if the employee met a condition (e.g. full
+  /// attendance that week); otherwise treated as a working day.
+  isConditionalWeekend Boolean @default(false) @map("is_conditional_weekend")
+
+  employee Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  roster   AttendanceRoster? @relation(fields: [rosterId], references: [id], onDelete: SetNull)
+  shift    Shift?           @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, date])
+  @@index([date])
+  @@map("roster_assignment")
+}
+
+/// One row per employee per calendar day. In production this table is
+/// declaratively partitioned BY RANGE(date) — see
+/// prisma/sql/001_partition_attendance.sql.
+model Attendance {
+  id                BigInt           @id @default(autoincrement())
+  employeeId        BigInt           @map("employee_id")
+  employeeVisibleId String           @map("employee_visible_id")
+  companyId         Int              @map("company_id")
+  locationId        Int?             @map("location_id")
+  date              DateTime         @db.Date
+
+  inTime            DateTime?        @map("in_time")
+  outTime           DateTime?        @map("out_time")
+  status            AttendanceStatus
+
+  /// Minutes late against the shift start + grace.
+  lateTimeMinutes      Int  @default(0) @map("late_time_minutes")
+  breakTimeMinutes     Int  @default(0) @map("break_time_minutes")
+  totalWorkMinutes     Int  @default(0) @map("total_work_minutes")
+  otTimeInSeconds      Int  @default(0) @map("ot_time_in_seconds")
+  extraOtTimeInSeconds Int  @default(0) @map("extra_ot_time_in_seconds")
+
+  /// Denormalised shift snapshot — the roster may be re-cut later, but a
+  /// past attendance row must keep the shift it was actually judged against.
+  attendanceRosterShiftName    String? @map("attendance_roster_shift_name")
+  attendanceRosterStartTime    String? @map("attendance_roaster_start_time")
+  attendanceRosterEndTime      String? @map("attendance_roaster_end_time")
+  attendanceRosterLateTime     String? @map("attendance_roaster_late_time")
+
+  // ── inline edit-request sub-state (mirrors the reference system) ────
+  isEdited          Boolean   @default(false) @map("is_edited")
+  isInTimeEdited    Boolean   @default(false) @map("is_in_time_edited")
+  isOutTimeEdited   Boolean   @default(false) @map("is_out_time_edited")
+  updatedInTime     DateTime? @map("updated_in_time")
+  updatedOutTime    DateTime? @map("updated_out_time")
+  updatedStatus     AttendanceStatus? @map("updated_status")
+  sendEditRequest   Boolean   @default(false) @map("send_edit_request")
+  editReason        String?   @map("edit_reason")
+  isAcceptedByLm    Boolean   @default(false) @map("is_accepted_by_lm")
+  isRejectedByLm    Boolean   @default(false) @map("is_rejected_by_lm")
+  sendingDate       DateTime? @map("sending_date")
+  acceptedDate      DateTime? @map("accepted_date")
+  rejectedDate      DateTime? @map("rejected_date")
+  actionOverridenByAdmin Boolean @default(false) @map("action_overriden_by_admin")
+  allowedForOverridingRequestAction Boolean @default(true) @map("allowed_for_overriding_request_action")
+
+  /// True when the day worked entitles the employee to a compensatory day off.
+  compensationLeaveApplicable Boolean @default(false) @map("compensation_leave_applicable")
+  attendanceAdditionalInfo    Json?   @map("attendance_additional_info")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  employee   Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  location   Location?  @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  breaks     BreakTime[]
+  editRequests AttendanceEditRequest[]
+
+  @@unique([employeeId, date])
+  @@index([companyId, date])
+  @@index([date, status])
+  @@map("attendance")
+}
+
+model BreakTime {
+  id           BigInt    @id @default(autoincrement())
+  attendanceId BigInt    @map("attendance_id")
+  startAt      DateTime  @map("start_at")
+  endAt        DateTime? @map("end_at")
+  reason       String?
+
+  attendance Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  @@index([attendanceId])
+  @@map("break_time")
+}
+
+model AttendanceEditRequest {
+  id            BigInt        @id @default(autoincrement())
+  attendanceId  BigInt        @map("attendance_id")
+  employeeId    BigInt        @map("employee_id")
+  requestedInTime  DateTime?  @map("requested_in_time")
+  requestedOutTime DateTime?  @map("requested_out_time")
+  requestedStatus  AttendanceStatus? @map("requested_status")
+  reason        String
+  status        RequestStatus @default(PENDING)
+  approverId    BigInt?       @map("approver_id")
+  decisionNote  String?       @map("decision_note")
+  overriddenByAdmin Boolean   @default(false) @map("overridden_by_admin")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  decidedAt     DateTime?     @map("decided_at")
+
+  attendance Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  employee   Employee   @relation("AttEditRequester", fields: [employeeId], references: [id], onDelete: Cascade)
+  approver   Employee?  @relation("AttEditApprover", fields: [approverId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, status])
+  @@index([approverId, status])
+  @@map("attendance_edit_request")
+}
+
+model OvertimeRequest {
+  id           BigInt        @id @default(autoincrement())
+  employeeId   BigInt        @map("employee_id")
+  date         DateTime      @db.Date
+  fromTime     String        @map("from_time")
+  toTime       String        @map("to_time")
+  hours        Decimal       @db.Decimal(6, 2)
+  reason       String
+  status       RequestStatus @default(PENDING)
+  approverId   BigInt?       @map("approver_id")
+  decisionNote String?       @map("decision_note")
+  /// Set once the approved overtime has been picked up by a payroll run.
+  payrollRunId Int?          @map("payroll_run_id")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  decidedAt    DateTime?     @map("decided_at")
+
+  employee Employee  @relation("OtRequester", fields: [employeeId], references: [id], onDelete: Cascade)
+  approver Employee? @relation("OtApprover", fields: [approverId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, status])
+  @@index([approverId, status])
+  @@map("overtime_request")
+}
+
+/// "I worked a weekend/holiday — grant me a compensatory day off."
+model CompensationRequest {
+  id           BigInt        @id @default(autoincrement())
+  employeeId   BigInt        @map("employee_id")
+  /// The weekend/holiday actually worked.
+  workedDate   DateTime      @map("worked_date") @db.Date
+  /// The day off being claimed (may be decided later).
+  requestedOffDate DateTime? @map("requested_off_date") @db.Date
+  days         Decimal       @default(1) @db.Decimal(4, 2)
+  reason       String
+  status       RequestStatus @default(PENDING)
+  approverId   BigInt?       @map("approver_id")
+  decisionNote String?       @map("decision_note")
+  expiresAt    DateTime?     @map("expires_at") @db.Date
+  consumedAt   DateTime?     @map("consumed_at")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  decidedAt    DateTime?     @map("decided_at")
+
+  employee Employee  @relation("CompRequester", fields: [employeeId], references: [id], onDelete: Cascade)
+  approver Employee? @relation("CompApprover", fields: [approverId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, status])
+  @@index([approverId, status])
+  @@map("compensation_request")
+}
+
+model ShiftExchangeRequest {
+  id             BigInt        @id @default(autoincrement())
+  requesterId    BigInt        @map("requester_id")
+  counterpartyId BigInt        @map("counterparty_id")
+  date           DateTime      @db.Date
+  counterpartyDate DateTime    @map("counterparty_date") @db.Date
+  fromShiftId    Int?          @map("from_shift_id")
+  toShiftId      Int?          @map("to_shift_id")
+  reason         String
+  status         RequestStatus @default(PENDING)
+  /// The counterparty must agree before the manager can approve.
+  counterpartyAccepted Boolean @default(false) @map("counterparty_accepted")
+  approverId     BigInt?       @map("approver_id")
+  decisionNote   String?       @map("decision_note")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  decidedAt      DateTime?     @map("decided_at")
+
+  requester    Employee  @relation("SxRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  counterparty Employee  @relation("SxCounterparty", fields: [counterpartyId], references: [id], onDelete: Cascade)
+  approver     Employee? @relation("SxApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  fromShift    Shift?    @relation("SxFromShift", fields: [fromShiftId], references: [id], onDelete: SetNull)
+  toShift      Shift?    @relation("SxToShift", fields: [toShiftId], references: [id], onDelete: SetNull)
+
+  @@index([requesterId, status])
+  @@index([approverId, status])
+  @@map("shift_exchange_request")
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  LEAVE
+// ════════════════════════════════════════════════════════════════════════
+
+model LeaveType {
+  id                 Int               @id @default(autoincrement())
+  companyId          Int               @map("company_id")
+  key                String            // casual | sick | maternity | paternity | annual | comp_off | lwp
+  label              String
+  colorHex           String            @map("color_hex")
+  defaultCount       Decimal           @default(0) @map("default_count") @db.Decimal(6, 2)
+  /// Pro-rate the entitlement for mid-year joiners (gives fractional
+  /// balances such as 8.56 days).
+  isProRated         Boolean           @default(true) @map("is_pro_rated")
+  isCarryForwardable Boolean           @default(false) @map("is_carry_forwardable")
+  maxCarryForward    Decimal           @default(0) @map("max_carry_forward") @db.Decimal(6, 2)
+  requiresDocument   Boolean           @default(false) @map("requires_document")
+  genderRestriction  GenderRestriction @default(NONE) @map("gender_restriction")
+  /// Consecutive-days cap per request (0 = unlimited).
+  maxConsecutiveDays Int               @default(0) @map("max_consecutive_days")
+  minNoticeDays      Int               @default(0) @map("min_notice_days")
+  /// Whether weekends/holidays inside the range are deducted.
+  countsHolidays     Boolean           @default(false) @map("counts_holidays")
+  isPaid             Boolean           @default(true) @map("is_paid")
+  sortOrder          Int               @default(0) @map("sort_order")
+  isActive           Boolean           @default(true) @map("is_active")
+
+  company       Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  policyLines   LeavePolicyLine[]
+  balances      LeaveBalance[]
+  requests      LeaveRequest[]
+  carryForwards LeaveCarryForward[]
+
+  @@unique([companyId, key])
+  @@map("leave_type")
+}
+
+model LeavePolicy {
+  id            Int      @id @default(autoincrement())
+  companyId     Int      @map("company_id")
+  name          String
+  effectiveYear Int      @map("effective_year")
+  description   String?
+  isDefault     Boolean  @default(false) @map("is_default")
+  isActive      Boolean  @default(true) @map("is_active")
+
+  company   Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lines     LeavePolicyLine[]
+  employees Employee[]        @relation("EmpLeavePolicy")
+
+  @@unique([companyId, name, effectiveYear])
+  @@map("leave_policy")
+}
+
+model LeavePolicyLine {
+  id             Int     @id @default(autoincrement())
+  leavePolicyId  Int     @map("leave_policy_id")
+  leaveTypeId    Int     @map("leave_type_id")
+  entitledCount  Decimal @map("entitled_count") @db.Decimal(6, 2)
+
+  policy    LeavePolicy @relation(fields: [leavePolicyId], references: [id], onDelete: Cascade)
+  leaveType LeaveType   @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([leavePolicyId, leaveTypeId])
+  @@map("leave_policy_line")
+}
+
+/// Per-employee, per-type, per-year ledger. Fractional by design.
+model LeaveBalance {
+  id                  Int     @id @default(autoincrement())
+  employeeId          BigInt  @map("employee_id")
+  leaveTypeId         Int     @map("leave_type_id")
+  year                Int
+  /// Entitlement for the year (after pro-rating).
+  actualLeaveCount    Decimal @map("actual_leave_count") @db.Decimal(6, 2)
+  remainingLeaveCount Decimal @map("remaining_leave_count") @db.Decimal(6, 2)
+  consumedCount       Decimal @default(0) @map("consumed_count") @db.Decimal(6, 2)
+  /// Days pending approval — held so an employee cannot overdraw.
+  pendingCount        Decimal @default(0) @map("pending_count") @db.Decimal(6, 2)
+  carriedForward      Decimal @default(0) @map("carried_forward") @db.Decimal(6, 2)
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, leaveTypeId, year])
+  @@index([employeeId, year])
+  @@map("leave_balance")
+}
+
+model LeaveRequest {
+  id           BigInt        @id @default(autoincrement())
+  employeeId   BigInt        @map("employee_id")
+  leaveTypeId  Int           @map("leave_type_id")
+  startDate    DateTime      @map("start_date") @db.Date
+  endDate      DateTime      @map("end_date") @db.Date
+  /// Chargeable days (calendar days minus weekends/holidays, halves allowed).
+  leaveDays    Decimal       @map("leave_days") @db.Decimal(5, 2)
+  /// Raw span, inclusive.
+  calendarDays Int           @map("calendar_days")
+  dayPart      LeaveDayPart  @default(FULL_DAY) @map("day_part")
+  isHalfDay    Boolean       @default(false) @map("is_half_day")
+  reason       String        @db.VarChar(255)
+  appliedDate  DateTime      @default(now()) @map("applied_date")
+  status       RequestStatus @default(PENDING)
+  approverId   BigInt?       @map("approver_id")
+  approvedAt   DateTime?     @map("approved_at")
+  decisionNote String?       @map("decision_note")
+  documentPath String?       @map("document_path")
+  /// Address/phone while away, for statutory long leave.
+  contactWhileAway String?   @map("contact_while_away")
+  handoverToId BigInt?       @map("handover_to_id")
+  cancelledAt  DateTime?     @map("cancelled_at")
+
+  employee  Employee  @relation("LeaveRequester", fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+  approver  Employee? @relation("LeaveApprover", fields: [approverId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, status])
+  @@index([approverId, status])
+  @@index([startDate, endDate])
+  @@map("leave_request")
+}
+
+model LeaveCarryForward {
+  id          Int      @id @default(autoincrement())
+  employeeId  BigInt   @map("employee_id")
+  leaveTypeId Int      @map("leave_type_id")
+  fromYear    Int      @map("from_year")
+  toYear      Int      @map("to_year")
+  /// What was left over before the cap was applied.
+  eligibleDays Decimal @map("eligible_days") @db.Decimal(6, 2)
+  carriedDays  Decimal @map("carried_days") @db.Decimal(6, 2)
+  lapsedDays   Decimal @map("lapsed_days") @db.Decimal(6, 2)
+  expiresAt    DateTime? @map("expires_at") @db.Date
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, leaveTypeId, fromYear])
+  @@map("leave_carry_forward")
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  HOLIDAY
+// ════════════════════════════════════════════════════════════════════════
+
+model Holiday {
+  id          Int      @id @default(autoincrement())
+  companyId   Int      @map("company_id")
+  /// Null = applies to every location in the company.
+  locationId  Int?     @map("location_id")
+  name        String
+  startDate   DateTime @map("start_date") @db.Date
+  endDate     DateTime @map("end_date") @db.Date
+  duration    Int
+  description String?
+  year        Int
+  /// Religion-optional holidays (employees opt in).
+  isOptional  Boolean  @default(false) @map("is_optional")
+  religion    String?
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  location Location? @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, year])
+  @@index([startDate, endDate])
+  @@map("holiday")
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  PAYROLL
+// ════════════════════════════════════════════════════════════════════════
+
+model PayrollRun {
+  id          Int              @id @default(autoincrement())
+  companyId   Int              @map("company_id")
+  month       Int
+  year        Int
+  status      PayrollRunStatus @default(DRAFT)
+  salaryDate  DateTime?        @map("salary_date") @db.Date
+  headcount   Int              @default(0)
+  totalGross  Decimal          @default(0) @map("total_gross") @db.Decimal(16, 2)
+  totalNet    Decimal          @default(0) @map("total_net") @db.Decimal(16, 2)
+  totalTax    Decimal          @default(0) @map("total_tax") @db.Decimal(16, 2)
+  notes       String?
+  lockedAt    DateTime?        @map("locked_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  payslips Payslip[]
+
+  @@unique([companyId, month, year])
+  @@map("payroll_run")
+}
+
+model Payslip {
+  id           BigInt   @id @default(autoincrement())
+  payrollRunId Int      @map("payroll_run_id")
+  employeeId   BigInt   @map("employee_id")
+  month        Int
+  year         Int
+  salaryDate   DateTime @map("salary_date") @db.Date
+
+  // ── earnings (column abbreviations as printed in the payslip grid) ──
+  gross                     Decimal @db.Decimal(14, 2) // GS
+  basicAllowance            Decimal @map("basic_allowance") @db.Decimal(14, 2) // BA
+  conveyanceAllowanceMedical Decimal @map("conveyance_allowance_medical") @db.Decimal(14, 2) // CAM
+  transportAllowance        Decimal @default(0) @map("transport_allowance") @db.Decimal(14, 2) // TA
+  mobileBill                Decimal @default(0) @map("mobile_bill") @db.Decimal(14, 2) // MB
+  overtimeAmount            Decimal @default(0) @map("overtime_amount") @db.Decimal(14, 2)
+  bonusAmount               Decimal @default(0) @map("bonus_amount") @db.Decimal(14, 2)
+  otherEarnings             Decimal @default(0) @map("other_earnings") @db.Decimal(14, 2)
+
+  // ── deductions ─────────────────────────────────────────────────────
+  tax                 Decimal @default(0) @db.Decimal(14, 2) // Tax
+  providentFund       Decimal @default(0) @map("provident_fund") @db.Decimal(14, 2) // PF
+  deductionForAbsence Decimal @default(0) @map("deduction_for_absence") @db.Decimal(14, 2) // DFA
+  loanDeduction       Decimal @default(0) @map("loan_deduction") @db.Decimal(14, 2)
+  otherDeductions     Decimal @default(0) @map("other_deductions") @db.Decimal(14, 2)
+
+  netPayable   Decimal @map("net_payable") @db.Decimal(14, 2)
+  /// Absence/LWP arithmetic behind DFA, plus the full component ledger.
+  breakdown    Json?
+  payslipPath  String? @map("payslip_path")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  run      PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employee Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, month, year])
+  @@index([employeeId, year])
+  @@map("payslip")
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  TAX  (Bangladesh NBR engine — versioned & date-effective)
+// ════════════════════════════════════════════════════════════════════════
+
+/// One row per (country, fiscal year, taxpayer category). Slabs and the
+/// exemption arithmetic change every budget, so nothing here is hardcoded
+/// in application code.
+model TaxConfig {
+  id        Int              @id @default(autoincrement())
+  country   String           @default("BD")
+  /// Label form "2026-27".
+  fiscalYear String          @map("fiscal_year")
+  category  TaxpayerCategory @default(GENERAL)
+
+  /// Non-taxable allowance = min(totalEarning / divisor, cap).
+  nonTaxableDivisor      Decimal @default(3) @map("non_taxable_divisor") @db.Decimal(8, 4)
+  nonTaxableCap          Decimal @map("non_taxable_cap") @db.Decimal(14, 2)
+  /// Allowable investment = pct × taxable income.
+  investmentAllowancePct Decimal @default(20) @map("investment_allowance_pct") @db.Decimal(6, 3)
+  /// Rebate = pct × allowable investment.
+  rebatePct              Decimal @default(10) @map("rebate_pct") @db.Decimal(6, 3)
+  /// Floor payable by anyone with taxable income (NBR minimum tax).
+  minimumTax             Decimal @default(0) @map("minimum_tax") @db.Decimal(14, 2)
+  /// Surcharge thresholds on net wealth, if applicable.
+  surchargeRules         Json?   @map("surcharge_rules")
+  effectiveFrom          DateTime @map("effective_from") @db.Date
+  effectiveTo            DateTime? @map("effective_to") @db.Date
+  isActive               Boolean  @default(true) @map("is_active")
+  notes                  String?
+
+  slabs TaxSlab[]
+
+  @@unique([country, fiscalYear, category])
+  @@map("tax_config")
+}
+
+/// Progressive "first N taka at R%" bands. A null slabAmount means
+/// "everything remaining".
+model TaxSlab {
+  id          Int      @id @default(autoincrement())
+  taxConfigId Int      @map("tax_config_id")
+  seq         Int
+  slabAmount  Decimal? @map("slab_amount") @db.Decimal(14, 2)
+  rate        Decimal  @db.Decimal(6, 3)
+  label       String?
+
+  config TaxConfig @relation(fields: [taxConfigId], references: [id], onDelete: Cascade)
+
+  @@unique([taxConfigId, seq])
+  @@map("tax_slab")
+}
+
+/// Materialised result of the calculation, recomputed whenever salary,
+/// bonus or investment inputs change.
+model EmployeeTaxYear {
+  id                Int      @id @default(autoincrement())
+  employeeId        BigInt   @map("employee_id")
+  fiscalYear        String   @map("fiscal_year")
+  category          TaxpayerCategory @default(GENERAL)
+  totalGross        Decimal  @map("total_gross") @db.Decimal(14, 2)
+  totalEarning      Decimal  @map("total_earning") @db.Decimal(14, 2)
+  nonTaxable        Decimal  @map("non_taxable") @db.Decimal(14, 2)
+  taxable           Decimal  @db.Decimal(14, 2)
+  totalTax          Decimal  @map("total_tax") @db.Decimal(14, 2)
+  allowableInvestment Decimal @map("allowable_investment") @db.Decimal(14, 2)
+  actualInvestment  Decimal  @default(0) @map("actual_investment") @db.Decimal(14, 2)
+  rebate            Decimal  @db.Decimal(14, 2)
+  advanceIncomeTax  Decimal  @default(0) @map("advance_income_tax") @db.Decimal(14, 2)
+  liability         Decimal  @db.Decimal(14, 2)
+  paidToDate        Decimal  @default(0) @map("paid_to_date") @db.Decimal(14, 2)
+  remainingLiability Decimal @default(0) @map("remaining_liability") @db.Decimal(14, 2)
+  remainingMonths   Int      @default(0) @map("remaining_months")
+  monthlyLiability  Decimal  @default(0) @map("monthly_liability") @db.Decimal(14, 2)
+  /// Full audit trail: gross timeline, earning breakup, slab-by-slab
+  /// working. Kept so a payslip can always be explained years later.
+  computation       Json?
+  computedAt        DateTime @default(now()) @map("computed_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, fiscalYear])
+  @@map("employee_tax_year")
+}
+
+model TaxPayment {
+  id         Int      @id @default(autoincrement())
+  employeeId BigInt   @map("employee_id")
+  fiscalYear String   @map("fiscal_year")
+  month      Int
+  year       Int
+  amount     Decimal  @db.Decimal(14, 2)
+  /// deducted_at_source | advance | adjustment
+  kind       String   @default("deducted_at_source")
+  challanNo  String?  @map("challan_no")
+  paidAt     DateTime @default(now()) @map("paid_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, fiscalYear, month, year])
+  @@index([employeeId, fiscalYear])
+  @@map("tax_payment")
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  FOOD / MEAL MANAGEMENT
+// ════════════════════════════════════════════════════════════════════════
+
+model FoodProgram {
+  id        Int     @id @default(autoincrement())
+  companyId Int     @map("company_id")
+  name      String  // e.g. "Kormo Lunch Management"
+  /// What the employee pays per meal (the company subsidises the rest).
+  selfCost  Decimal @map("self_cost") @db.Decimal(10, 2)
+  /// Full chargeable rate for a guest meal.
+  guestCost Decimal @map("guest_cost") @db.Decimal(10, 2)
+  /// Cut-off (HH:mm) after which a meal can no longer be cancelled.
+  cancelCutoff String @default("09:30") @map("cancel_cutoff")
+  isActive  Boolean @default(true) @map("is_active")
+
+  company       Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  menus         FoodMenu[]
+  subscriptions MealSubscription[]
+  meals         Meal[]
+
+  @@unique([companyId, name])
+  @@map("food_program")
+}
+
+model FoodMenu {
+  id            Int      @id @default(autoincrement())
+  foodProgramId Int      @map("food_program_id")
+  /// 0=Sunday … 6=Saturday, for the rotating weekly menu.
+  dayOfWeek     Int      @map("day_of_week")
+  /// Effective-dated so the menu can be revised without rewriting history.
+  effectiveFrom DateTime @map("effective_from") @db.Date
+  /// [{ "item": "Rice", "qty": "1 plate" }, ...]
+  items         Json
+
+  program FoodProgram @relation(fields: [foodProgramId], references: [id], onDelete: Cascade)
+
+  @@unique([foodProgramId, dayOfWeek, effectiveFrom])
+  @@map("food_menu")
+}
+
+model MealSubscription {
+  id            Int       @id @default(autoincrement())
+  employeeId    BigInt    @map("employee_id")
+  foodProgramId Int       @map("food_program_id")
+  subscribedAt  DateTime  @default(now()) @map("subscribed_at")
+  unsubscribedAt DateTime? @map("unsubscribed_at")
+  isActive      Boolean   @default(true) @map("is_active")
+
+  employee Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  program  FoodProgram @relation(fields: [foodProgramId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, foodProgramId])
+  @@map("meal_subscription")
+}
+
+model Meal {
+  id            BigInt     @id @default(autoincrement())
+  employeeId    BigInt     @map("employee_id")
+  foodProgramId Int        @map("food_program_id")
+  date          DateTime   @db.Date
+  status        MealStatus @default(SCHEDULED)
+  /// When the meal was actually collected (null → "Not taken Yet").
+  takenAt       DateTime?  @map("taken_at")
+  menuSnapshot  Json?      @map("menu_snapshot")
+  selfCost      Decimal    @default(0) @map("self_cost") @db.Decimal(10, 2)
+  guestCount    Int        @default(0) @map("guest_count")
+  guestMealCost Decimal    @default(0) @map("guest_meal_cost") @db.Decimal(10, 2)
+  cancelledAt   DateTime?  @map("cancelled_at")
+  cancelReason  String?    @map("cancel_reason")
+
+  employee Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  program  FoodProgram @relation(fields: [foodProgramId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, foodProgramId, date])
+  @@index([date])
+  @@map("meal")
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  PMS — performance management
+// ════════════════════════════════════════════════════════════════════════
+
+/// Goals only exist inside a cycle; an employee must be enrolled in a
+/// cycle before they can create one (matches the reference behaviour).
+model GoalCycle {
+  id        Int      @id @default(autoincrement())
+  companyId Int      @map("company_id")
+  name      String   // e.g. "FY 2026-27 H1"
+  /// Window in which goals may be authored/edited.
+  startDate DateTime @map("start_date") @db.Date
+  endDate   DateTime @map("end_date") @db.Date
+  /// Window in which reviews/feedback may be submitted.
+  feedbackStartDate DateTime @map("feedback_start_date") @db.Date
+  feedbackEndDate   DateTime @map("feedback_end_date") @db.Date
+  weightMustTotal   Int      @default(100) @map("weight_must_total")
+  isActive  Boolean  @default(true) @map("is_active")
+
+  company      Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  participants GoalCycleMember[]
+  goals        Goal[]
+
+  @@unique([companyId, name])
+  @@map("goal_cycle")
+}
+
+model GoalCycleMember {
+  goalCycleId Int    @map("goal_cycle_id")
+  employeeId  BigInt @map("employee_id")
+  enrolledAt  DateTime @default(now()) @map("enrolled_at")
+
+  cycle GoalCycle @relation(fields: [goalCycleId], references: [id], onDelete: Cascade)
+
+  @@id([goalCycleId, employeeId])
+  @@map("goal_cycle_member")
+}
+
+model Goal {
+  id          Int        @id @default(autoincrement())
+  goalCycleId Int        @map("goal_cycle_id")
+  employeeId  BigInt     @map("employee_id")
+  /// Set when this goal cascades from a manager's goal.
+  parentGoalId Int?      @map("parent_goal_id")
+  title       String
+  description String?
+  /// Measurable target, e.g. "Reduce onboarding TAT to 3 days".
+  metric      String?
+  target      String?
+  weight      Int        @default(0)
+  progressPct Int        @default(0) @map("progress_pct")
+  status      GoalStatus @default(DRAFT)
+  dueDate     DateTime?  @map("due_date") @db.Date
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  cycle    GoalCycle    @relation(fields: [goalCycleId], references: [id], onDelete: Cascade)
+  employee Employee     @relation("GoalOwner", fields: [employeeId], references: [id], onDelete: Cascade)
+  parent   Goal?        @relation("GoalCascade", fields: [parentGoalId], references: [id], onDelete: SetNull)
+  children Goal[]       @relation("GoalCascade")
+  reviews  GoalReview[]
+
+  @@index([employeeId, goalCycleId])
+  @@map("goal")
+}
+
+model GoalReview {
+  id         Int         @id @default(autoincrement())
+  goalId     Int         @map("goal_id")
+  reviewerId BigInt      @map("reviewer_id")
+  stage      ReviewStage @default(SELF_ASSESSMENT)
+  /// 1–5 rating scale.
+  rating     Int?
+  comment    String?
+  submittedAt DateTime?  @map("submitted_at")
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  goal     Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  reviewer Employee @relation("GoalReviewer", fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@index([goalId])
+  @@map("goal_review")
+}
+
+/// Probation-confirmation appraisal.
+model JobConfirmationReview {
+  id           Int                  @id @default(autoincrement())
+  employeeId   BigInt               @map("employee_id")
+  reviewerId   BigInt?              @map("reviewer_id")
+  dueDate      DateTime             @map("due_date") @db.Date
+  stage        ReviewStage          @default(SELF_ASSESSMENT)
+  decision     ConfirmationDecision @default(PENDING)
+  /// Scored competencies: [{ "criterion": "Quality of work", "score": 4 }]
+  scorecard    Json?
+  overallScore Decimal?             @map("overall_score") @db.Decimal(5, 2)
+  strengths    String?
+  improvements String?
+  /// Set when the decision is EXTENDED.
+  extendedToDate DateTime?          @map("extended_to_date") @db.Date
+  completedAt  DateTime?            @map("completed_at")
+  createdAt    DateTime             @default(now()) @map("created_at")
+
+  employee Employee  @relation("ConfirmationSubject", fields: [employeeId], references: [id], onDelete: Cascade)
+  reviewer Employee? @relation("ConfirmationReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([reviewerId, decision])
+  @@index([employeeId])
+  @@map("job_confirmation_review")
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  SALES FORCE MANAGEMENT — customer visits & field tracking
+// ════════════════════════════════════════════════════════════════════════
+
+model Customer {
+  id           Int          @id @default(autoincrement())
+  companyId    Int          @map("company_id")
+  name         String
+  code         String?
+  address      String?
+  city         String?
+  lat          Float?
+  lng          Float?
+  /// Account tier used by the "visits by contact level" analytics.
+  contactLevel ContactLevel @default(B) @map("contact_level")
+  /// pharmacy | hospital | distributor | clinic | corporate
+  orgType      String?      @map("org_type")
+  contactPerson String?     @map("contact_person")
+  contactPhone String?      @map("contact_phone")
+  isActive     Boolean      @default(true) @map("is_active")
+
+  company Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  visits  CustomerVisit[]
+
+  @@unique([companyId, name])
+  @@index([companyId, contactLevel])
+  @@map("customer")
+}
+
+model CustomerVisit {
+  id            BigInt   @id @default(autoincrement())
+  customerId    Int      @map("customer_id")
+  employeeId    BigInt   @map("employee_id")
+  visitDate     DateTime @map("visit_date") @db.Date
+  checkInAt     DateTime? @map("check_in_at")
+  checkOutAt    DateTime? @map("check_out_at")
+  /// Who at the customer was actually met.
+  personVisited String?  @map("person_visited")
+  purpose       String?
+  outcome       String?
+  orderValue    Decimal? @map("order_value") @db.Decimal(14, 2)
+  /// GPS of the check-in, for visit verification.
+  lat           Float?
+  lng           Float?
+  /// Metres between the punch and the customer's registered coordinates.
+  distanceM     Int?     @map("distance_m")
+  photoPath     String?  @map("photo_path")
+  isJointVisit  Boolean  @default(false) @map("is_joint_visit")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  employee     Employee  @relation("VisitOwner", fields: [employeeId], references: [id], onDelete: Cascade)
+  participants CustomerVisitParticipant[]
+
+  @@index([employeeId, visitDate])
+  @@index([customerId, visitDate])
+  @@index([visitDate])
+  @@map("customer_visit")
+}
+
+/// Additional employees on a joint visit.
+model CustomerVisitParticipant {
+  visitId    BigInt @map("visit_id")
+  employeeId BigInt @map("employee_id")
+
+  visit    CustomerVisit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  employee Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@id([visitId, employeeId])
+  @@map("customer_visit_participant")
+}
+
+/// Per-employee tracking policy. Location tracking of staff is legally
+/// sensitive: consent is explicit, windowed to working hours, and points
+/// are purged after `retentionDays`.
+model TrackingConfig {
+  employeeId     BigInt    @id @map("employee_id")
+  enabled        Boolean   @default(false)
+  consentGivenAt DateTime? @map("consent_given_at")
+  consentRevokedAt DateTime? @map("consent_revoked_at")
+  /// Tracking is discarded outside this window (HH:mm, local time).
+  windowStart    String    @default("09:00") @map("window_start")
+  windowEnd      String    @default("19:00") @map("window_end")
+  /// Seconds between breadcrumb samples.
+  pingIntervalSec Int      @default(120) @map("ping_interval_sec")
+  retentionDays  Int       @default(90) @map("retention_days")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("tracking_config")
+}
+
+model TrackingSession {
+  id           BigInt                @id @default(autoincrement())
+  employeeId   BigInt                @map("employee_id")
+  startedAt    DateTime              @map("started_at")
+  endedAt      DateTime?             @map("ended_at")
+  status       TrackingSessionStatus @default(ONGOING)
+  distanceKm   Decimal               @default(0) @map("distance_km") @db.Decimal(10, 3)
+  pointCount   Int                   @default(0) @map("point_count")
+  batteryStart Int?                  @map("battery_start")
+  batteryEnd   Int?                  @map("battery_end")
+  deviceInfo   String?               @map("device_info")
+  /// Set once the retention window has passed and points were purged.
+  purgedAt     DateTime?             @map("purged_at")
+
+  employee Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  points   TrackingPoint[]
+
+  @@index([employeeId, startedAt])
+  @@index([status])
+  @@map("tracking_session")
+}
+
+model TrackingPoint {
+  id        BigInt   @id @default(autoincrement())
+  sessionId BigInt   @map("session_id")
+  recordedAt DateTime @map("recorded_at")
+  lat       Float
+  lng       Float
+  accuracyM Int?     @map("accuracy_m")
+  speedKph  Float?   @map("speed_kph")
+
+  session TrackingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, recordedAt])
+  @@map("tracking_point")
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  ONBOARDING
+// ════════════════════════════════════════════════════════════════════════
+
+model OnboardingTemplate {
+  id        Int     @id @default(autoincrement())
+  companyId Int     @map("company_id")
+  name      String
+  /// Optionally scope a template to a department or designation.
+  departmentId Int? @map("department_id")
+  isDefault Boolean @default(false) @map("is_default")
+  isActive  Boolean @default(true) @map("is_active")
+
+  company Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  items   OnboardingTemplateItem[]
+
+  @@unique([companyId, name])
+  @@map("onboarding_template")
+}
+
+model OnboardingTemplateItem {
+  id         Int            @id @default(autoincrement())
+  templateId Int            @map("template_id")
+  lane       OnboardingLane
+  title      String
+  description String?
+  /// Days relative to the joining date (negative = before day one).
+  dueOffsetDays Int         @default(0) @map("due_offset_days")
+  /// Task cannot start until every listed item id is DONE.
+  blockedBy  Int[]          @map("blocked_by")
+  isMandatory Boolean       @default(true) @map("is_mandatory")
+  sortOrder  Int            @default(0) @map("sort_order")
+
+  template OnboardingTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  tasks    OnboardingTask[]
+
+  @@index([templateId, lane])
+  @@map("onboarding_template_item")
+}
+
+model OnboardingTask {
+  id             BigInt         @id @default(autoincrement())
+  /// The new joiner this task belongs to.
+  employeeId     BigInt         @map("employee_id")
+  templateItemId Int?           @map("template_item_id")
+  lane           OnboardingLane
+  title          String
+  description    String?
+  /// Who must action it (resolved from the lane at provisioning time).
+  assigneeId     BigInt?        @map("assignee_id")
+  dueDate        DateTime?      @map("due_date") @db.Date
+  status         TaskStatus     @default(PENDING)
+  completedAt    DateTime?      @map("completed_at")
+  note           String?
+  attachmentPath String?        @map("attachment_path")
+  sortOrder      Int            @default(0) @map("sort_order")
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  employee     Employee                @relation("OnboardingSubject", fields: [employeeId], references: [id], onDelete: Cascade)
+  assignee     Employee?               @relation("OnboardingAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  templateItem OnboardingTemplateItem? @relation(fields: [templateItemId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, lane])
+  @@index([assigneeId, status])
+  @@map("onboarding_task")
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  E-RESIGNATION & CLEARANCE
+// ════════════════════════════════════════════════════════════════════════
+
+model Resignation {
+  id         BigInt           @id @default(autoincrement())
+  employeeId BigInt           @map("employee_id")
+  /// Snapshot of the contractual notice period at submission time.
+  noticePeriodRequiredDays Int @map("notice_period_required_days")
+  submittedAt DateTime        @default(now()) @map("submitted_at")
+  lastWorkingDay DateTime     @map("last_working_day") @db.Date
+  /// Derived: days between submission and last working day.
+  noticePeriodServedDays Int  @map("notice_period_served_days")
+  /// Derived: required − served. Drives salary recovery.
+  noticePeriodRecoveryDays Int @map("notice_period_recovery_days")
+  dateOfSeparation DateTime   @map("date_of_separation") @db.Date
+  reason     String           @db.VarChar(255)
+  /// Signed resignation letter — mandatory.
+  letterPath String           @map("letter_path")
+  stage      ResignationStage @default(SUBMITTED)
+  /// Amount recovered from final settlement for un-served notice.
+  recoveryAmount Decimal?     @map("recovery_amount") @db.Decimal(14, 2)
+  finalSettlementAmount Decimal? @map("final_settlement_amount") @db.Decimal(14, 2)
+  withdrawnAt DateTime?       @map("withdrawn_at")
+  completedAt DateTime?       @map("completed_at")
+
+  employee     Employee              @relation("ResignationEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  approvals    ResignationApproval[]
+  clearances   ClearanceItem[]
+  exitInterview ExitInterview?
+
+  @@index([employeeId])
+  @@index([stage])
+  @@map("resignation")
+}
+
+model ResignationApproval {
+  id            BigInt        @id @default(autoincrement())
+  resignationId BigInt        @map("resignation_id")
+  approverId    BigInt        @map("approver_id")
+  /// LINE_MANAGER | HR | MD
+  role          String
+  seq           Int           @default(0)
+  status        RequestStatus @default(PENDING)
+  comment       String?
+  decidedAt     DateTime?     @map("decided_at")
+
+  resignation Resignation @relation(fields: [resignationId], references: [id], onDelete: Cascade)
+  approver    Employee    @relation("ResignationApprover", fields: [approverId], references: [id], onDelete: Cascade)
+
+  @@index([approverId, status])
+  @@map("resignation_approval")
+}
+
+/// Departments that must sign off before an exit is complete.
+model ClearanceDepartment {
+  id           Int     @id @default(autoincrement())
+  companyId    Int     @map("company_id")
+  departmentId Int?    @map("department_id")
+  name         String  // e.g. "IT Asset Return", "Finance — Loan & Advance"
+  /// Default checklist rendered for this department.
+  checklist    String[]
+  sortOrder    Int     @default(0) @map("sort_order")
+  isActive     Boolean @default(true) @map("is_active")
+
+  company    Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  department Department?     @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  items      ClearanceItem[]
+
+  @@unique([companyId, name])
+  @@map("clearance_department")
+}
+
+model ClearanceItem {
+  id            BigInt        @id @default(autoincrement())
+  resignationId BigInt        @map("resignation_id")
+  clearanceDepartmentId Int   @map("clearance_department_id")
+  /// The person accountable for signing this line off.
+  ownerId       BigInt?       @map("owner_id")
+  status        RequestStatus @default(PENDING)
+  /// Outstanding dues/assets recovered at clearance.
+  duesAmount    Decimal?      @map("dues_amount") @db.Decimal(14, 2)
+  remarks       String?
+  /// [{ "item": "Laptop DL-4421", "returned": true }]
+  checklistState Json?        @map("checklist_state")
+  clearedAt     DateTime?     @map("cleared_at")
+
+  resignation Resignation         @relation(fields: [resignationId], references: [id], onDelete: Cascade)
+  department  ClearanceDepartment @relation(fields: [clearanceDepartmentId], references: [id], onDelete: Cascade)
+  owner       Employee?           @relation("ClearanceOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@unique([resignationId, clearanceDepartmentId])
+  @@index([ownerId, status])
+  @@map("clearance_item")
+}
+
+model ExitInterview {
+  id            BigInt   @id @default(autoincrement())
+  resignationId BigInt   @unique @map("resignation_id")
+  /// [{ "question": "...", "answer": "...", "rating": 4 }]
+  responses     Json
+  /// Free-text primary reason, distinct from the formal resignation reason.
+  primaryReason String?  @map("primary_reason")
+  wouldRejoin   Boolean? @map("would_rejoin")
+  npsScore      Int?     @map("nps_score")
+  conductedById BigInt?  @map("conducted_by_id")
+  conductedAt   DateTime? @map("conducted_at")
+
+  resignation Resignation @relation(fields: [resignationId], references: [id], onDelete: Cascade)
+
+  @@map("exit_interview")
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  ROOM / SPACE BOOKING
+// ════════════════════════════════════════════════════════════════════════
+
+model Room {
+  id         Int     @id @default(autoincrement())
+  companyId  Int     @map("company_id")
+  locationId Int?    @map("location_id")
+  name       String
+  floor      String?
+  capacity   Int     @default(4)
+  /// ["Projector", "Whiteboard", "VC"]
+  amenities  String[]
+  colorHex   String? @map("color_hex")
+  /// Bookable window (HH:mm).
+  openTime   String  @default("00:00") @map("open_time")
+  closeTime  String  @default("23:59") @map("close_time")
+  isActive   Boolean @default(true) @map("is_active")
+
+  company  Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  location Location?     @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  bookings RoomBooking[]
+
+  @@unique([companyId, name])
+  @@map("room")
+}
+
+model RoomBooking {
+  id          BigInt        @id @default(autoincrement())
+  roomId      Int           @map("room_id")
+  organiserId BigInt        @map("organiser_id")
+  title       String
+  agenda      String?
+  startAt     DateTime      @map("start_at")
+  endAt       DateTime      @map("end_at")
+  status      BookingStatus @default(CONFIRMED)
+  /// RRULE-ish descriptor for repeating meetings.
+  recurrence  Json?
+  /// Set on each generated occurrence of a recurring series.
+  seriesId    String?       @map("series_id")
+  externalGuests String[]   @map("external_guests")
+  cancelledAt DateTime?     @map("cancelled_at")
+  cancelReason String?      @map("cancel_reason")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  room      Room                  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  organiser Employee              @relation("BookingOrganiser", fields: [organiserId], references: [id], onDelete: Cascade)
+  attendees RoomBookingAttendee[]
+
+  @@index([roomId, startAt, endAt])
+  @@index([organiserId])
+  @@index([seriesId])
+  @@map("room_booking")
+}
+
+model RoomBookingAttendee {
+  bookingId  BigInt        @map("booking_id")
+  employeeId BigInt        @map("employee_id")
+  /// PENDING | APPROVED (accepted) | REJECTED (declined)
+  response   RequestStatus @default(PENDING)
+
+  booking  RoomBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  employee Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@id([bookingId, employeeId])
+  @@map("room_booking_attendee")
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  WORKPLACE — notices, policies, notifications, help desk, audit, reports
+// ════════════════════════════════════════════════════════════════════════
+
+model Notice {
+  id         Int      @id @default(autoincrement())
+  companyId  Int      @map("company_id")
+  title      String
+  body       String
+  authorId   BigInt?  @map("author_id")
+  /// Pin to the top of the notice board.
+  isPinned   Boolean  @default(false) @map("is_pinned")
+  publishAt  DateTime @default(now()) @map("publish_at")
+  expiresAt  DateTime? @map("expires_at")
+  attachmentPath String? @map("attachment_path")
+  /// Restrict visibility to specific departments (empty = everyone).
+  departmentIds Int[]  @map("department_ids")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  company Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  author  Employee? @relation("NoticeAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, publishAt])
+  @@map("notice")
+}
+
+model OfficePolicy {
+  id          Int      @id @default(autoincrement())
+  companyId   Int      @map("company_id")
+  title       String
+  category    String?  // HR | IT | Finance | Safety | Code of Conduct
+  version     String   @default("1.0")
+  summary     String?
+  documentPath String? @map("document_path")
+  effectiveFrom DateTime @map("effective_from") @db.Date
+  isLatest    Boolean  @default(true) @map("is_latest")
+  /// Requires an explicit employee acknowledgement.
+  requiresAck Boolean  @default(false) @map("requires_ack")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, isLatest])
+  @@map("office_policy")
+}
+
+model Notification {
+  id         BigInt           @id @default(autoincrement())
+  employeeId BigInt           @map("employee_id")
+  kind       NotificationKind
+  title      String
+  body       String?
+  /// Deep link into the SPA, e.g. "/leave/approval".
+  link       String?
+  /// Origin record, so a notification can be reconciled/deduped.
+  entityType String?          @map("entity_type")
+  entityId   String?          @map("entity_id")
+  readAt     DateTime?        @map("read_at")
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, readAt])
+  @@index([createdAt])
+  @@map("notification")
+}
+
+model HelpdeskTicket {
+  id          Int              @id @default(autoincrement())
+  companyId   Int              @map("company_id")
+  requesterId BigInt           @map("requester_id")
+  assigneeId  BigInt?          @map("assignee_id")
+  category    String           // HR | IT | Payroll | Facilities
+  subject     String
+  body        String
+  priority    HelpdeskPriority @default(MEDIUM)
+  status      HelpdeskStatus   @default(OPEN)
+  attachmentPath String?       @map("attachment_path")
+  resolutionNote String?       @map("resolution_note")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  resolvedAt  DateTime?        @map("resolved_at")
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  requester Employee  @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  assignee  Employee? @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, status])
+  @@index([requesterId])
+  @@map("helpdesk_ticket")
+}
+
+/// Append-only trail for anything an auditor would ask about: approvals,
+/// salary edits, payroll locks, permission grants.
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  actorId    BigInt?  @map("actor_id")
+  companyId  Int?     @map("company_id")
+  action     String   // e.g. "leave.approve"
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  before     Json?
+  after      Json?
+  ip         String?
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor Employee? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+  @@map("audit_log")
+}
+
+/// Async export jobs. The client polls (or gets a socket push) and then
+/// downloads via a short-lived presigned URL — never a raw object path.
+model ReportJob {
+  id           String       @id @default(uuid())
+  companyId    Int          @map("company_id")
+  requestedById BigInt      @map("requested_by_id")
+  /// e.g. EmployeeTax | Payslips | AttendanceMonthly | LeaveLedger | OrgTree
+  reportType   String       @map("report_type")
+  format       String       @default("xlsx")
+  params       Json?
+  status       ReportStatus @default(QUEUED)
+  progressPct  Int          @default(0) @map("progress_pct")
+  filePath     String?      @map("file_path")
+  fileSizeBytes Int?        @map("file_size_bytes")
+  rowCount     Int?         @map("row_count")
+  error        String?
+  /// Generated artefacts are swept after this instant.
+  expiresAt    DateTime?    @map("expires_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  startedAt    DateTime?    @map("started_at")
+  finishedAt   DateTime?    @map("finished_at")
+
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  requestedBy Employee @relation(fields: [requestedById], references: [id], onDelete: Cascade)
+
+  @@index([requestedById, status])
+  @@map("report_job")
+}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Kormo HR">
+  <title>Kormo HR — single colour</title>
+  <!-- currentColor so it inherits ink: use for print, stamps, favicons, dark UI -->
+  <g fill="currentColor" stroke="currentColor">
+    <rect x="16" y="15" width="7.5" height="34" rx="3.75" stroke="none"/>
+    <path d="M27.5 32 L46 16" fill="none" stroke-width="7.5" stroke-linecap="round" opacity="0.62"/>
+    <path d="M27.5 32 L46 48" fill="none" stroke-width="7.5" stroke-linecap="round"/>
+  </g>
+</svg>

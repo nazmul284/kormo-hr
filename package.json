@@ -1,0 +1,43 @@
+{
+  "name": "kormo-hr",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Kormo HR \u2014 multi-tenant Human Resource Management Suite (employee lifecycle: onboarding to clearance)",
+  "workspaces": [
+    "apps/api",
+    "apps/web",
+    "packages/shared"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "bootstrap": "npm install && npm run build -w @kormo/shared && npm run infra:up && node scripts/wait-for-db.mjs && npm run db:generate && npm run db:deploy && npm run db:seed",
+    "build": "npm run build -w @kormo/shared && npm run build -w @kormo/api && npm run build -w @kormo/web",
+    "db:deploy": "npm run prisma:deploy -w @kormo/api",
+    "db:generate": "npm run prisma:generate -w @kormo/api",
+    "db:migrate": "npm run prisma:migrate -w @kormo/api",
+    "db:push": "npm run prisma:push -w @kormo/api",
+    "db:reset": "npm run prisma:reset -w @kormo/api",
+    "db:seed": "npm run seed -w @kormo/api",
+    "db:studio": "npm run prisma:studio -w @kormo/api",
+    "dev": "concurrently -k -n api,web -c cyan,magenta \"npm run dev -w @kormo/api\" \"npm run dev -w @kormo/web\"",
+    "dev:api": "npm run dev -w @kormo/api",
+    "dev:web": "npm run dev -w @kormo/web",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "infra:logs": "docker compose -f infra/docker-compose.yml logs -f",
+    "infra:nuke": "docker compose -f infra/docker-compose.yml down -v",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "start": "concurrently -k -n api,web -c cyan,magenta \"npm run start -w @kormo/api\" \"npm run start -w @kormo/web\"",
+    "test": "npm run test -w @kormo/shared && npm run test -w @kormo/api",
+    "typecheck": "npm run typecheck -w @kormo/api && npm run typecheck -w @kormo/web",
+    "verify": "npm run test -w @kormo/shared && npm run verify:api && npm run verify:workflow",
+    "verify:api": "bash scripts/api-smoke.sh",
+    "verify:ui": "node scripts/screenshot.mjs --user md --out ./.screenshots --routes /dashboard,/profile,/profile/security,/directory,/org-chart,/attendance,/attendance/approvals,/attendance/shift-calendar,/attendance/overtime,/attendance/compensation,/leave,/leave/approval,/leave/report,/leave/colleagues,/holidays,/payroll,/tax,/performance,/performance/team,/performance/job-confirmation,/field-force/visits,/field-force/tracking,/onboarding,/resignation,/resignation/approvals,/resignation/clearance,/space-booking,/food,/helpdesk,/reports,/company,/company/notices,/company/policies,/company/change-requests",
+    "verify:workflow": "bash scripts/workflow-test.sh"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "puppeteer-core": "^23.11.1"
+  }
+}

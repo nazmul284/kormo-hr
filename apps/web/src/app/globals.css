@@ -1,0 +1,425 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Kormo HR design tokens.
+ *
+ * Every colour is declared here as an "R G B" triple so Tailwind can apply
+ * opacity to it, and no component ever contains a raw hex.
+ *
+ * Light is the base; dark redefines only what changes, under both the OS
+ * media query and an explicit [data-theme] stamp, so a manual toggle wins
+ * in either direction.
+ *
+ * Colours that carry meaning were validated rather than chosen by eye —
+ * lightness band, chroma floor, colour-vision-deficiency separation and
+ * contrast, against the surfaces they actually render on. The comments
+ * below record what each choice was measured against.
+ */
+@layer base {
+  :root {
+    color-scheme: light;
+
+    /*
+     * Surfaces. The page is tinted very slightly toward the brand hue so a
+     * white card genuinely lifts off it — at #F8FAFC the two were only 4.6
+     * luminance points apart and every card had to be drawn with a border.
+     */
+    --page: 245 246 250;
+    --surface: 255 255 255;
+    --surface-raised: 255 255 255;
+    --surface-sunken: 239 241 247;
+
+    --ink: 15 23 42;
+    --ink-secondary: 71 85 105;
+    /* Measured, twice over. #94A3B8 failed even AA-large on white (2.56:1);
+       #8A93A6 cleared AA-large but not AA (3.09:1 on white, 2.86:1 on the
+       page) — and this token labels 12px meta text, not headings, so
+       AA-large is not the bar it has to clear. This step holds 5.24:1 on the
+       card, 4.85:1 on the page and 4.64:1 on a sunken row, while staying
+       clearly lighter than --ink-secondary (7.58:1). */
+    --ink-muted: 100 109 122;
+    --ink-inverse: 255 255 255;
+    --line: 228 231 240;
+    --line-strong: 205 211 226;
+
+    /* ── brand ────────────────────────────────────────────────────── */
+    --brand: 79 70 229;
+    --brand-hover: 67 56 202;
+    --brand-subtle: 238 240 254;
+    --brand-ink: 55 48 163;
+    /* For large washes, where full-strength indigo is overbearing. */
+    --brand-wash: 246 246 255;
+    /* Decorative header band. Nothing legible sits on it — the avatar carries
+       its own opaque ring and the name sits on the card below — so these are
+       tuned purely to read as a band without competing with the content. */
+    --banner-from: 232 232 251;
+    --banner-to: 223 242 240;
+    --accent: 13 148 136;
+    --accent-subtle: 240 253 250;
+
+    /*
+     * ── status ────────────────────────────────────────────────────
+     * Three roles, not four: the previous `serious` sat only ΔE 6 from
+     * `critical`, so they read as one colour and crowded each other out.
+     *
+     * Each role has a FILL (for marks — validated ≥3:1 against the
+     * surface) and an INK (for text — validated ≥4.5:1). The old single
+     * token was doing both jobs and failing the text one badly: the amber
+     * measured 1.79:1.
+     *
+     * The greens also matter: the previous #0CA30C sat only ΔE 10 from the
+     * aqua series hue, so "approved" and "compensatory off" were
+     * confusable. #047857 is ΔE 16.5 away.
+     */
+    --good: 4 120 87;
+    --good-ink: 6 95 70;
+    --good-subtle: 236 253 245;
+
+    --warning: 194 116 11;
+    --warning-ink: 180 83 9;
+    --warning-subtle: 255 251 235;
+
+    --critical: 220 38 38;
+    --critical-ink: 185 28 28;
+    --critical-subtle: 254 242 242;
+
+    /* Kept as an alias so existing call sites stay valid; it is now the
+       warning ink rather than a fourth, near-duplicate hue. */
+    --serious: 180 83 9;
+    --serious-subtle: 255 251 235;
+
+    /*
+     * ── chart series ──────────────────────────────────────────────
+     * Fixed order, never cycled. Validated on white: lightness band,
+     * chroma floor, adjacent CVD ΔE 9.1, normal-vision ΔE 19.6.
+     * Slots 3/4/5 sit below 3:1, so charts using them carry direct
+     * labels or a table view.
+     */
+    --series-1: 79 70 229;          /* indigo (brand)  #4F46E5 */
+    --series-2: 235 104 52;         /* orange          #eb6834 */
+    --series-3: 27 175 122;         /* aqua            #1baf7a */
+    --series-4: 237 161 0;          /* yellow          #eda100 */
+    --series-5: 232 123 164;        /* magenta         #e87ba4 */
+
+    /*
+     * ── leave types ───────────────────────────────────────────────
+     * Drawn from the validated series rather than picked by hand. The
+     * previous set had casual (#F97316) and annual (#FB923C) as the same
+     * orange, so two of five bars were indistinguishable.
+     *
+     * Maternity and paternity share the "parental" hue deliberately: they
+     * are gender-restricted, so no employee ever sees both. Violet was
+     * ruled out entirely — at ΔE 11.4 it is too close to the brand indigo
+     * to work as a sibling category.
+     */
+    --leave-casual: 237 161 0;      /* yellow  */
+    --leave-sick: 232 123 164;      /* magenta */
+    --leave-annual: 79 70 229;      /* indigo  */
+    --leave-parental: 235 104 52;   /* orange  */
+    --leave-comp: 27 175 122;       /* aqua    */
+    --leave-unpaid: 100 116 139;    /* slate — deliberately low chroma */
+
+    /* chart chrome */
+    --grid: 228 231 240;
+    --axis: 205 211 226;
+  }
+
+  /* OS-level dark, unless a light theme is explicitly stamped */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      color-scheme: dark;
+
+      /* Separation widened: page↔surface was only 0.31 luminance points,
+         so cards were invisible against the page. */
+      --page: 8 11 20;
+      --surface: 17 24 39;
+      --surface-raised: 26 34 52;
+      --surface-sunken: 12 17 28;
+
+      --ink: 248 250 252;
+      --ink-secondary: 203 213 225;
+      --ink-muted: 124 134 153;
+      --ink-inverse: 15 23 42;
+      --line: 35 43 61;
+      --line-strong: 51 65 85;
+
+      --brand: 129 140 248;
+      --brand-hover: 165 180 252;
+      --brand-subtle: 30 34 66;
+      --brand-ink: 199 210 254;
+      --brand-wash: 21 25 48;
+    --banner-from: 28 32 60;
+    --banner-to: 17 40 43;
+      --banner-from: 28 32 60;
+      --banner-to: 17 40 43;
+      --accent: 45 212 191;
+      --accent-subtle: 17 44 44;
+
+      --good: 52 211 153;
+      --good-ink: 110 231 183;
+      --good-subtle: 6 42 30;
+
+      --warning: 251 191 36;
+      --warning-ink: 252 211 77;
+      --warning-subtle: 44 32 8;
+
+      --critical: 248 113 113;
+      --critical-ink: 252 165 165;
+      --critical-subtle: 48 18 18;
+
+      --serious: 252 211 77;
+      --serious-subtle: 44 32 8;
+
+      /*
+       * Dark steps are selected, not flipped: each hue is re-stepped for
+       * the dark surface and validated as a set (band, chroma,
+       * CVD ΔE 8.4, normal-vision ΔE 19.3, contrast all ≥3:1).
+       */
+      --series-1: 99 102 241;
+      --series-2: 217 89 38;
+      --series-3: 25 158 112;
+      --series-4: 201 133 0;
+      --series-5: 213 81 129;
+
+      --leave-casual: 201 133 0;
+      --leave-sick: 213 81 129;
+      --leave-annual: 99 102 241;
+      --leave-parental: 217 89 38;
+      --leave-comp: 25 158 112;
+      --leave-unpaid: 148 163 184;
+
+      --grid: 35 43 61;
+      --axis: 51 65 85;
+    }
+  }
+
+  /* Explicit dark stamp — must win over the media query above */
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+
+    --page: 8 11 20;
+    --surface: 17 24 39;
+    --surface-raised: 26 34 52;
+    --surface-sunken: 12 17 28;
+
+    --ink: 248 250 252;
+    --ink-secondary: 203 213 225;
+    --ink-muted: 124 134 153;
+    --ink-inverse: 15 23 42;
+    --line: 35 43 61;
+    --line-strong: 51 65 85;
+
+    --brand: 129 140 248;
+    --brand-hover: 165 180 252;
+    --brand-subtle: 30 34 66;
+    --brand-ink: 199 210 254;
+    --brand-wash: 21 25 48;
+    --accent: 45 212 191;
+    --accent-subtle: 17 44 44;
+
+    --good: 52 211 153;
+    --good-ink: 110 231 183;
+    --good-subtle: 6 42 30;
+
+    --warning: 251 191 36;
+    --warning-ink: 252 211 77;
+    --warning-subtle: 44 32 8;
+
+    --critical: 248 113 113;
+    --critical-ink: 252 165 165;
+    --critical-subtle: 48 18 18;
+
+    --serious: 252 211 77;
+    --serious-subtle: 44 32 8;
+
+    --series-1: 99 102 241;
+    --series-2: 217 89 38;
+    --series-3: 25 158 112;
+    --series-4: 201 133 0;
+    --series-5: 213 81 129;
+
+    --leave-casual: 201 133 0;
+    --leave-sick: 213 81 129;
+    --leave-annual: 99 102 241;
+    --leave-parental: 217 89 38;
+    --leave-comp: 25 158 112;
+    --leave-unpaid: 148 163 184;
+
+    --grid: 35 43 61;
+    --axis: 51 65 85;
+  }
+
+  * {
+    @apply border-line;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-page text-sm text-ink antialiased;
+    /* Geist ships contextual alternates and standard ligatures; the previous
+       value asked for Inter's `cv02/cv03/cv04`, which no font here has. */
+    font-feature-settings: 'liga' 1, 'calt' 1;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Numeric columns must align vertically; prose must not. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  /*
+    Weight and wrapping only — deliberately NOT colour. A heading has to be
+    able to sit on a dark brand surface and inherit white from it; baking
+    `text-ink` in here painted the login headline dark-on-dark.
+  */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold;
+    text-wrap: balance;
+  }
+
+  /* Long-form paragraphs read better without orphans. */
+  p {
+    text-wrap: pretty;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand ring-offset-2 ring-offset-page;
+  }
+
+  /* Scrollbars: present but recessive. */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-line-strong;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-ink-muted; }
+}
+
+@layer components {
+  .card {
+    @apply rounded-card border border-line bg-surface shadow-card;
+  }
+
+  /*
+    15px, a step above body text. At 14px it matched the paragraph beside it
+    and the card had no visible hierarchy — the heading has to win.
+  */
+  .card-title {
+    @apply text-base font-semibold tracking-[-0.01em] text-ink;
+  }
+
+  /**
+   * Page and section headings.
+   *
+   * These were repeated as the same four utilities on 37 pages, which meant
+   * the type scale could not be changed in one place. `page-title` is the
+   * single definition now.
+   */
+  .page-title {
+    @apply text-xl font-semibold tracking-tight text-ink;
+  }
+  .page-subtitle {
+    @apply mt-1 max-w-3xl text-sm leading-relaxed text-ink-secondary;
+  }
+  .section-title {
+    @apply text-sm font-semibold tracking-tight text-ink;
+  }
+  /* Small all-caps label above a group of fields or a stat. */
+  .eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-wider text-ink-muted;
+  }
+
+  /* Data tables: recessive chrome, tabular figures, sticky header. */
+  .data-table {
+    @apply w-full border-collapse text-sm;
+  }
+  .data-table thead th {
+    @apply sticky top-0 z-10 whitespace-nowrap border-b border-line bg-surface-sunken
+           px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-wider text-ink-secondary;
+  }
+  .data-table tbody td {
+    @apply border-b border-line px-3 py-2.5 align-middle text-ink-secondary;
+  }
+  .data-table tbody tr:hover {
+    @apply bg-surface-sunken/60;
+  }
+  .data-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  /**
+   * Fades the bottom edge of a scroll container.
+   *
+   * The sidebar is taller than most viewports, so its last visible item was
+   * cut off mid-glyph with nothing to say why. A fade reads as "more below"
+   * instead of as a rendering fault.
+   */
+  .scroll-fade-b {
+    mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent 100%);
+  }
+
+  /** Same idea on the horizontal axis, for tab strips and chip rows. */
+  .scroll-fade-r {
+    mask-image: linear-gradient(to right, black calc(100% - 24px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, black calc(100% - 24px), transparent 100%);
+  }
+
+  /* Wide content scrolls inside its own box; the page never scrolls sideways. */
+  .scroll-x {
+    @apply -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0;
+  }
+
+  /**
+   * The band behind a profile/identity avatar.
+   *
+   * Deliberately low-chroma: it used to be full-strength brand indigo, which
+   * both out-shouted the card content and clashed with indigo now doing
+   * identity work as the annual-leave hue.
+   */
+  .banner-wash {
+    background: linear-gradient(
+      110deg,
+      rgb(var(--banner-from)),
+      rgb(var(--banner-to))
+    );
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden rounded bg-surface-sunken;
+  }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(var(--surface) / 0.6),
+      transparent
+    );
+    animation: shimmer 1.6s infinite;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+/* Leaflet needs its own container height and inherits our surface. */
+.leaflet-container {
+  @apply bg-surface-sunken;
+  font-family: inherit;
+}
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  @apply bg-surface text-ink;
+}

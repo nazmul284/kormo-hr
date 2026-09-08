@@ -1,0 +1,40 @@
+node_modules/
+dist/
+build/
+.next/
+out/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# storage / artifacts
+apps/api/.storage/
+apps/api/generated/
+*.log
+npm-debug.log*
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# prisma
+apps/api/prisma/*.db
+apps/api/prisma/*.db-journal
+
+# workspace env symlinks -> root .env
+apps/api/.env
+apps/web/.env.local
+
+# verification artefacts
+.screenshots/
+.screenshots-dark/
+.screenshots-mobile/
+
+# production build output (kept separate so it cannot clobber next dev)
+apps/web/.next-build/

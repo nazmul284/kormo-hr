@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 268 64" width="268" height="64" role="img" aria-label="Kormo HR">
+  <title>Kormo HR</title>
+  <defs>
+    <linearGradient id="lkTile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="55%" stop-color="#4F46E5"/>
+      <stop offset="100%" stop-color="#3730A3"/>
+    </linearGradient>
+  </defs>
+
+  <g>
+    <rect width="64" height="64" rx="15" fill="url(#lkTile)"/>
+    <rect x="16" y="15" width="7.5" height="34" rx="3.75" fill="#FFFFFF"/>
+    <path d="M27.5 32 L46 16" fill="none" stroke="#5EEAD4" stroke-width="7.5" stroke-linecap="round"/>
+    <path d="M27.5 32 L46 48" fill="none" stroke="#FFFFFF" stroke-width="7.5" stroke-linecap="round"/>
+  </g>
+
+  <g font-family="Inter, 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+    <text x="80" y="35" font-size="27" font-weight="700" letter-spacing="-0.9" fill="#0F172A">Kormo</text>
+    <text x="184" y="35" font-size="27" font-weight="700" letter-spacing="-0.4" fill="#4F46E5">HR</text>
+    <text x="81" y="51" font-size="10.5" font-weight="500" letter-spacing="2.6" fill="#64748B">PEOPLE OPERATIONS</text>
+  </g>
+</svg>
