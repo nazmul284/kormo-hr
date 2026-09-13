@@ -10,7 +10,7 @@ Three things you might be trying to do. Pick one.
 
 ## 1. Run it locally
 
-**Prerequisites:** Node 20+, Docker.
+**Prerequisites:** Node 22+, Docker.
 
 ```bash
 git clone https://github.com/nazmul284/kormo-hr.git && cd kormo-hr

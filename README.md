@@ -71,7 +71,7 @@ A people-operations platform covering eighteen modules behind one permission mod
 
 ## Quick start
 
-**Prerequisites:** Node 20+, Docker.
+**Prerequisites:** Node 22+, Docker.
 
 ```bash
 git clone https://github.com/nazmul284/kormo-hr.git && cd kormo-hr

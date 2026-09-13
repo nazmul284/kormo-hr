@@ -2,7 +2,7 @@
   "name": "@kormo/shared",
   "version": "1.0.0",
   "private": true,
-  "description": "Kormo HR — framework-agnostic domain logic shared by API and web (tax engine, leave maths, permission keys)",
+  "description": "Kormo HR \u2014 framework-agnostic domain logic shared by API and web (tax engine, leave maths, permission keys)",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -11,7 +11,9 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",

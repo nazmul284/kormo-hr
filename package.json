@@ -9,7 +9,7 @@
     "packages/shared"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "bootstrap": "npm install && npm run build -w @kormo/shared && npm run infra:up && node scripts/wait-for-db.mjs && npm run db:generate && npm run db:deploy && npm run db:seed",

@@ -16,7 +16,7 @@ npm run dev           # API :4000, web :3000
 
 Sign in at <http://localhost:3000> as `md` / `Kormo@123`. If anything in that
 sequence fails, that is a bug worth reporting — the bootstrap is meant to work
-on a clean machine with only Node 20+ and Docker.
+on a clean machine with only Node 22+ and Docker.
 
 ---
 

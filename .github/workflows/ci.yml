@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run build -w @kormo/shared
@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run build -w @kormo/shared
@@ -55,7 +55,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run db:generate
@@ -87,7 +87,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run build -w @kormo/shared
@@ -123,7 +123,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run build -w @kormo/shared
@@ -143,5 +143,11 @@ jobs:
           done
           echo "API did not become healthy in 120s"; exit 1
 
+      # Both suites default to the web tier's proxied origin (:3000),
+      # which CI does not run — point them straight at the API.
       - run: npm run verify:api
+        env:
+          KORMO_API: http://localhost:4000/api
       - run: npm run verify:workflow
+        env:
+          KORMO_API: http://localhost:4000/api

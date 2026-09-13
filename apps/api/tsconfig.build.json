@@ -1,0 +1,15 @@
+{
+  // Build config, picked up automatically by `nest build`.
+  //
+  // The main tsconfig also includes `prisma/**/*` so that `npm run
+  // typecheck` covers the seed generator. That is right for typechecking
+  // and wrong for building: with two include roots TypeScript infers the
+  // common root as `apps/api/`, so the output lands at `dist/src/main.js`
+  // rather than `dist/main.js` — which is what `npm start` expects, and
+  // which nobody noticed because development runs `nest start --watch`.
+  //
+  // It also means a production image would ship the seed script, and the
+  // seed truncates every table. Excluding it here fixes both at once.
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", "dist", "prisma", "test", "**/*.spec.ts", "**/*.test.ts"]
+}
