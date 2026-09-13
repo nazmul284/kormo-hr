@@ -142,7 +142,7 @@ export default function OvertimePage() {
     <>
       <PageHeader
         title="Overtime"
-        description="Approved overtime is paid at twice the hourly basic rate, per the Bangladesh Labour Act, and is picked up by the next payroll run."
+        description="Approved overtime is paid at twice the hourly basic rate and is picked up by the next payroll run. The multiplier is a payroll setting — change it there, not here, if your jurisdiction differs."
         breadcrumbs={[{ label: 'Attendance', href: '/attendance' }, { label: 'Overtime' }]}
         actions={
           <Button onClick={() => setCreating(true)}>

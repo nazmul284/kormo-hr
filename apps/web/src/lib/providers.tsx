@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Toaster } from 'sonner';
 
 import { ApiError } from './api';
+import { LocaleProvider } from './locale-provider';
 import { SessionProvider } from './session';
 import type { SessionUser } from './types';
 
@@ -41,7 +42,7 @@ export function Providers({
   return (
     <QueryClientProvider client={queryClient}>
       <SessionProvider initialUser={initialUser}>
-        {children}
+        <LocaleProvider>{children}</LocaleProvider>
         <Toaster
           position="top-right"
           closeButton

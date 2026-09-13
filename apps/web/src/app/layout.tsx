@@ -7,6 +7,15 @@ import { Providers } from '@/lib/providers';
 
 import './globals.css';
 
+/**
+ * Asset paths in `metadata` are emitted verbatim — Next does not apply
+ * `basePath` to them the way it does to `<Link>` and `next/image`. The
+ * static demo is served from a sub-path, so without this every icon and
+ * the web manifest 404 on the deployed site while working perfectly in
+ * development, which is the worst shape a bug can take.
+ */
+const base = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+
 export const metadata: Metadata = {
   title: {
     default: 'Kormo HR',
@@ -16,13 +25,13 @@ export const metadata: Metadata = {
     'Kormo HR — multi-tenant people operations: onboarding, attendance and shift, '
     + 'leave, payroll and tax, performance, field force, resignation and clearance.',
   applicationName: 'Kormo HR',
-  manifest: '/manifest.webmanifest',
+  manifest: `${base}/manifest.webmanifest`,
   icons: {
     icon: [
-      { url: '/favicon.svg', type: 'image/svg+xml' },
-      { url: '/favicon.ico', sizes: '16x16 32x32 48x48' },
+      { url: `${base}/favicon.svg`, type: 'image/svg+xml' },
+      { url: `${base}/favicon.ico`, sizes: '16x16 32x32 48x48' },
     ],
-    apple: '/apple-touch-icon.png',
+    apple: `${base}/apple-touch-icon.png`,
   },
   // An internal HR system should never be indexed.
   robots: { index: false, follow: false },

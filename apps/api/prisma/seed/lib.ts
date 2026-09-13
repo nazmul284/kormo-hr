@@ -1,4 +1,7 @@
 import { PrismaClient } from '@prisma/client';
+import { fictionalPhone, fromTemplate, getCountryPack } from '@kormo/shared';
+
+import { getDemoPack } from './packs';
 
 export const prisma = new PrismaClient({ log: ['warn', 'error'] });
 
@@ -32,6 +35,101 @@ export const pickN = <T>(arr: readonly T[], n: number): T[] => {
 };
 export const chance = (pct: number) => rng() * 100 < pct;
 export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+// ── country packs ─────────────────────────────────────────────────────
+
+/**
+ * The country being seeded. One env var switches the entire dataset:
+ * currency, weekend, holidays, tax slabs, names, addresses, banks and
+ * identifier formats all follow from it.
+ *
+ *   SEED_COUNTRY=US npm run db:seed
+ *
+ * `INTL` is a deliberately placeless default — see
+ * packages/shared/src/locale/packs/international.ts.
+ */
+export const SEED_COUNTRY = (process.env.SEED_COUNTRY ?? 'INTL').toUpperCase();
+
+/** Runtime rules: currency, weekend, holidays, tax, identifier formats. */
+export const PACK = getCountryPack(SEED_COUNTRY);
+/** Demo pools: names, addresses, banks, universities, employers. */
+export const DEMO = getDemoPack(SEED_COUNTRY);
+
+export const BLOOD_GROUPS = ['A_POS', 'A_NEG', 'B_POS', 'B_NEG', 'AB_POS', 'AB_NEG', 'O_POS', 'O_NEG'] as const;
+
+// ── fictional identifiers ─────────────────────────────────────────────
+//
+// Every generated contact detail is drawn from a block that provably
+// cannot belong to a real person — a regulator-reserved fiction range
+// where one is published, an all-zero body where none is. This repository
+// is public and its seed data ends up in forks and screenshots; a
+// "realistic" phone number here is somebody's phone ringing.
+
+/** A fictional phone number in E.164 form, e.g. "+99 0100000142". */
+export function phone(): string {
+  return fictionalPhone(PACK.phone, rng);
+}
+
+/** A structurally-invalid national ID in the pack's local format. */
+export function nationalId(): string {
+  return fromTemplate(PACK.nationalId.pattern, rng);
+}
+
+/** A structurally-invalid taxpayer reference in the pack's local format. */
+export function taxId(): string {
+  return fromTemplate(PACK.taxId.pattern, rng);
+}
+
+// ── money ─────────────────────────────────────────────────────────────
+
+/**
+ * Converts a figure from the shared salary table into the pack's currency.
+ *
+ * Rounded to the nearest hundred so payslips do not read as though
+ * someone was paid 17,483.62 a month — salary bands are round numbers
+ * everywhere, and an un-rounded one is the first thing that makes seeded
+ * data look seeded.
+ */
+export function salary(baseline: number): number {
+  return Math.round((baseline * DEMO.salaryScale) / 100) * 100;
+}
+
+/**
+ * Splits a gross figure into the four statutory heads the payslip schema
+ * carries, using the country pack's own percentages.
+ *
+ * The schema pins four columns (basic / house rent / conveyance /
+ * medical) because that is the split Bangladeshi payroll needs and the
+ * payslip renders. Packs whose country does not split pay at all — the
+ * US and UK — declare a single 100% Basic head and land everything in
+ * `basic`, which is the honest answer rather than an invented breakdown.
+ *
+ * A component code the mapping does not recognise folds into `basic`, so
+ * the four columns always sum back to gross. Adding a head to a pack can
+ * therefore never silently lose money off a payslip.
+ */
+export function splitGross(gross: number): {
+  basic: number; houseRent: number; conveyance: number; medical: number;
+} {
+  const out = { basic: 0, houseRent: 0, conveyance: 0, medical: 0 };
+  const components = PACK.tax?.earningComponents ?? [{ code: 'BASIC', label: 'Basic', pctOfGross: 100 }];
+
+  for (const component of components) {
+    const amount = round2((gross * component.pctOfGross) / 100);
+    switch (component.code) {
+      case 'HOUSE_RENT': case 'HRA': case 'HOUSING': out.houseRent += amount; break;
+      case 'CONVEYANCE': case 'TRANSPORT': out.conveyance += amount; break;
+      case 'MEDICAL': out.medical += amount; break;
+      default: out.basic += amount; break;
+    }
+  }
+
+  // Percentages that do not land on whole units leave a unit of dust;
+  // give it to basic so the four columns reconcile against gross exactly.
+  const drift = round2(gross - (out.basic + out.houseRent + out.conveyance + out.medical));
+  out.basic = round2(out.basic + drift);
+  return out;
+}
 
 // ── date helpers (all UTC-noon anchored, so no DST/tz drift) ──────────
 export const MS_DAY = 86_400_000;
@@ -69,18 +167,41 @@ export function eachDay(from: Date, to: Date): Date[] {
   return out;
 }
 
-/** Builds a Date at a given HH:mm on a given day, in Asia/Dhaka (UTC+6). */
+/**
+ * The tenant timezone's offset from UTC, in minutes, at a given instant.
+ *
+ * Computed per-date rather than taken as a constant because half the
+ * packs ship a timezone that observes DST: a fixed offset would shift
+ * every clock-in by an hour for half the seeded year, which reads as a
+ * fleet-wide late-arrival spike in the attendance grid.
+ */
+export function tzOffsetMinutes(timeZone: string, at: Date): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(at);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  const asUtc = Date.UTC(
+    get('year'), get('month') - 1, get('day'),
+    get('hour') % 24, get('minute'), get('second'),
+  );
+  return Math.round((asUtc - at.getTime()) / 60_000);
+}
+
+/** Builds a Date at a given HH:mm local time on a given day, in the tenant's timezone. */
 export function atTime(day: Date, hhmm: string, jitterMinutes = 0): Date {
   const [h, m] = hhmm.split(':').map(Number);
   const minutes = h * 60 + m + jitterMinutes;
-  // Dhaka is UTC+6, so subtract the offset to store the correct instant.
-  return new Date(
-    Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), 0, 0, 0) +
-      (minutes - 360) * 60_000,
-  );
+  const midnightUtc = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate());
+  // Probe the offset on the day itself so a DST transition is respected.
+  const offset = tzOffsetMinutes(PACK.timezone, new Date(midnightUtc));
+  return new Date(midnightUtc + (minutes - offset) * 60_000);
 }
 
-export const isWeekendBd = (date: Date) => [5, 6].includes(date.getUTCDay()); // Fri, Sat
+/** Weekend per the seeded country's pack — Sat/Sun in most, Fri/Sat in Bangladesh. */
+export const isWeekend = (date: Date) => PACK.weekendDays.includes(date.getUTCDay());
 
 /** "TODAY" for the whole seed run — one fixed clock keeps data coherent. */
 export const TODAY = d(process.env.SEED_TODAY ?? new Date().toISOString().slice(0, 10));
@@ -97,86 +218,6 @@ export function log(message: string, detail?: string | number) {
 
 export function section(title: string) {
   console.log(`\n\x1b[1m\x1b[35m${title}\x1b[0m`);
-}
-
-// ── Bangladeshi name pools ────────────────────────────────────────────
-export const MALE_FIRST = [
-  'Nazmul', 'Tanvir', 'Rakib', 'Sajjad', 'Imran', 'Mahfuz', 'Shahriar', 'Arif',
-  'Farhan', 'Rashed', 'Sabbir', 'Zahid', 'Ashiqur', 'Mizanur', 'Kamrul', 'Rifat',
-  'Naimul', 'Tahmid', 'Sazid', 'Mehedi', 'Asif', 'Rezaul', 'Shakib', 'Anisur',
-  'Jubayer', 'Redwan', 'Towhid', 'Golam', 'Masud', 'Sohel', 'Ariful', 'Nurul',
-];
-
-export const FEMALE_FIRST = [
-  'Nusrat', 'Tahmina', 'Sadia', 'Farzana', 'Rumana', 'Sabrina', 'Ishrat', 'Maliha',
-  'Nabila', 'Sumaiya', 'Tasnim', 'Afsana', 'Jannatul', 'Mahmuda', 'Shireen', 'Rubaiya',
-  'Anika', 'Samira', 'Fahmida', 'Noshin', 'Raisa', 'Sharmin', 'Tania', 'Lubna',
-];
-
-export const SURNAMES = [
-  'Hossain', 'Rahman', 'Islam', 'Ahmed', 'Chowdhury', 'Karim', 'Akter', 'Khatun',
-  'Uddin', 'Alam', 'Haque', 'Sarker', 'Mia', 'Bhuiyan', 'Talukder', 'Molla',
-  'Siddique', 'Mahmud', 'Kabir', 'Hasan', 'Jahan', 'Sultana', 'Begum', 'Mondal',
-  'Barua', 'Das', 'Roy', 'Saha', 'Dutta', 'Ghosh',
-];
-
-export const DHAKA_AREAS = [
-  'Banani', 'Gulshan', 'Dhanmondi', 'Uttara', 'Mirpur', 'Mohammadpur', 'Bashundhara R/A',
-  'Badda', 'Rampura', 'Motijheel', 'Tejgaon', 'Khilgaon', 'Shyamoli', 'Malibagh',
-];
-
-export const DISTRICTS = [
-  'Dhaka', 'Chattogram', 'Sylhet', 'Rajshahi', 'Khulna', 'Barishal', 'Rangpur',
-  'Mymensingh', 'Cumilla', 'Narayanganj', 'Gazipur', 'Bogura', 'Jessore', 'Noakhali',
-];
-
-export const BANKS = [
-  { name: 'Eastern Bank PLC', branches: ['Gulshan', 'Banani', 'Motijheel'], txn: 'EBLACT' },
-  { name: 'BRAC Bank PLC', branches: ['Gulshan', 'Uttara', 'Dhanmondi'], txn: 'BEFTN' },
-  { name: 'City Bank PLC', branches: ['Gulshan Avenue', 'Mirpur'], txn: 'BEFTN' },
-  { name: 'Dutch-Bangla Bank PLC', branches: ['Banani', 'Motijheel'], txn: 'BEFTN' },
-  { name: 'Islami Bank Bangladesh PLC', branches: ['Dilkusha', 'Uttara'], txn: 'BEFTN' },
-];
-
-export const RELIGIONS = ['Islam', 'Islam', 'Islam', 'Islam', 'Hinduism', 'Buddhism', 'Christianity'];
-
-export const BLOOD_GROUPS = ['A_POS', 'A_NEG', 'B_POS', 'B_NEG', 'AB_POS', 'AB_NEG', 'O_POS', 'O_NEG'] as const;
-
-export const UNIVERSITIES = [
-  'University of Dhaka', 'BUET', 'North South University', 'BRAC University',
-  'Jahangirnagar University', 'University of Chittagong', 'AIUB', 'IUT',
-  'Rajshahi University', 'East West University', 'Khulna University', 'SUST',
-];
-
-export const DEGREES = [
-  { degree: 'BSc in Computer Science & Engineering', major: 'CSE' },
-  { degree: 'BBA', major: 'Finance' },
-  { degree: 'BBA', major: 'Marketing' },
-  { degree: 'MBA', major: 'Human Resource Management' },
-  { degree: 'BSc in Pharmacy', major: 'Pharmacy' },
-  { degree: 'MSc in Statistics', major: 'Statistics' },
-  { degree: 'BA in English', major: 'English Literature' },
-  { degree: 'BSc in Electrical & Electronic Engineering', major: 'EEE' },
-];
-
-export const PREV_EMPLOYERS = [
-  'Grameenphone Ltd', 'bKash Limited', 'Robi Axiata', 'Square Pharmaceuticals',
-  'BRAC', 'Beximco Pharmaceuticals', 'Pathao', 'ShopUp', 'Chaldal', 'Daraz Bangladesh',
-  'Therap BD', 'Samsung R&D Bangladesh', 'Augmedix', 'Enosis Solutions',
-];
-
-/** 11-digit Bangladeshi mobile number in an operator-plausible range. */
-export function bdPhone(): string {
-  const prefix = pick(['013', '014', '015', '016', '017', '018', '019']);
-  return `${prefix}${String(randInt(10_000_000, 99_999_999))}`;
-}
-
-export function nid(): string {
-  return String(randInt(1_000_000_000, 9_999_999_999));
-}
-
-export function tin(): string {
-  return String(randInt(100_000_000_000, 999_999_999_999));
 }
 
 export function slugify(value: string): string {

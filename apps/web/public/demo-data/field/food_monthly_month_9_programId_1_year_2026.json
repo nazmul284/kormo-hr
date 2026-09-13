@@ -1,0 +1,1 @@
+{"program":{"id":1,"companyId":1,"name":"Kormo Lunch Management","selfCost":0,"guestCost":0,"cancelCutoff":"09:30","isActive":true},"subscription":null,"isSubscribed":false,"month":9,"year":2026,"meals":[],"totals":{"mealsTaken":0,"mealsCancelled":0,"mealsNotTaken":0,"selfCost":0,"guestCost":0,"payable":0},"cancelCutoff":"09:30"}

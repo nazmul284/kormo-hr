@@ -225,10 +225,14 @@ export function applySlabs(
 }
 
 /**
- * Full Bangladesh (NBR) income-tax computation for one employee, one
- * fiscal year. Pure: no dates from the ambient clock, no DB, no rounding
- * surprises — so the API, a payroll worker and the browser preview all
- * produce byte-identical numbers.
+ * Full income-tax computation for one employee, one fiscal year.
+ *
+ * Country-agnostic: every figure that varies between jurisdictions —
+ * slabs, the exemption shape, the investment rebate, the minimum-tax
+ * floor — arrives in `config`, which a country pack builds and the
+ * database stores. Pure: no dates from the ambient clock, no DB, no
+ * rounding surprises — so the API, a payroll worker and the browser
+ * preview all produce byte-identical numbers.
  *
  * Pipeline (each step is exposed on the result for auditability):
  *   1. gross timeline      — segment the FY on salary-effective dates
@@ -256,9 +260,14 @@ export function computeTax(input: TaxEngineInput): TaxComputation {
   );
 
   // 3 ── non-taxable allowance
-  const nonTaxable = ceil(
-    Math.min(totalEarning / config.nonTaxableDivisor, config.nonTaxableCap),
-  );
+  //
+  // Two shapes, never both: a flat standard deduction (most of the world)
+  // or an earnings-proportional exemption capped at a ceiling (South Asia).
+  // A flat allowance cannot exceed what was actually earned, or a
+  // part-year joiner would show negative taxable income.
+  const nonTaxable = config.nonTaxableFlat !== undefined
+    ? ceil(Math.min(config.nonTaxableFlat, totalEarning))
+    : ceil(Math.min(totalEarning / config.nonTaxableDivisor, config.nonTaxableCap));
 
   // 4 ── taxable income
   const taxable = Math.max(0, round2(totalEarning - nonTaxable));
@@ -282,7 +291,7 @@ export function computeTax(input: TaxEngineInput): TaxComputation {
   let liability = round2(slabTax - rebate - advanceIncomeTax);
   let minimumTaxApplied = false;
 
-  // The NBR floor bites only when there is income above the exempt band.
+  // A statutory minimum bites only when there is income above the exempt band.
   const exemptBand = config.slabs.find((s) => s.rate === 0)?.slabAmount ?? 0;
   const hasTaxableIncomeAboveExemption = taxable > exemptBand;
   if (hasTaxableIncomeAboveExemption && config.minimumTax > 0 && liability < config.minimumTax) {
@@ -332,22 +341,27 @@ export function computeTax(input: TaxEngineInput): TaxComputation {
 }
 
 /**
- * Fiscal-year helpers. Bangladesh runs July → June and labels the year
- * by its two calendar halves, e.g. "2026-27".
+ * Fiscal-year helpers.
+ *
+ * `startMonth` comes from the country pack: January in the US and most of
+ * the EU, April in the UK and India, July in Bangladesh and Australia. A
+ * year that straddles two calendar years is labelled by both halves
+ * ("2026-27"); one that does not is labelled by its single year ("2026").
  */
-export function fiscalYearLabel(date: Date, startMonth = 7): string {
+export function fiscalYearLabel(date: Date, startMonth = 1): string {
   const y = date.getUTCFullYear();
   const m = date.getUTCMonth() + 1;
   const startYear = m >= startMonth ? y : y - 1;
+  if (startMonth === 1) return String(startYear);
   return `${startYear}-${String((startYear + 1) % 100).padStart(2, '0')}`;
 }
 
-export function fiscalYearStartIso(label: string, startMonth = 7): string {
+export function fiscalYearStartIso(label: string, startMonth = 1): string {
   const startYear = Number(label.slice(0, 4));
   return `${startYear}-${String(startMonth).padStart(2, '0')}-01`;
 }
 
-export function fiscalYearRange(label: string, startMonth = 7): { start: string; end: string } {
+export function fiscalYearRange(label: string, startMonth = 1): { start: string; end: string } {
   const start = fiscalYearStartIso(label, startMonth);
   const s = parseDate(start);
   const end = new Date(addMonths(s, 12).getTime() - MS_DAY);

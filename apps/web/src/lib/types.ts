@@ -1,3 +1,5 @@
+import type { TenantLocale } from './locale';
+
 /** Shapes the UI relies on. Kept narrow: only what components read. */
 
 export interface Paginated<T> {
@@ -21,6 +23,8 @@ export interface SessionUser {
   department: string | null;
   departmentId: number | null;
   company: { id: number; name: string; alias: string };
+  /** How this tenant renders money, dates and weeks. See lib/locale.ts. */
+  locale: TenantLocale;
   location: { id: number; name: string } | null;
   joiningDate: string;
   serviceLength: string;
@@ -45,6 +49,8 @@ export interface EmployeeSummary {
   designation: { name: string } | null;
   department: { id: number; name: string } | null;
   company: { id: number; name: string; alias: string };
+  /** How this tenant renders money, dates and weeks. See lib/locale.ts. */
+  locale: TenantLocale;
   location: { id: number; name: string } | null;
   joiningDate?: string;
   employmentStatus?: string;

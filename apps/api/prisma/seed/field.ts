@@ -1,7 +1,7 @@
 import type { OrgResult } from './org';
 import {
-  DHAKA_AREAS, DISTRICTS, SURNAMES, TODAY, addDays, atTime, chance, eachDay, iso,
-  log, pick, pickN, prisma, randInt, rng, round2, section,
+  DEMO, PACK, TODAY, addDays, atTime, chance, eachDay, iso,
+  log, phone, pick, pickN, prisma, randInt, rng, round2, salary, section,
 } from './lib';
 
 /** Customer visits & GPS tracking for the field force. */
@@ -10,29 +10,36 @@ export async function seedField(org: OrgResult): Promise<void> {
 
   // ── customers ──────────────────────────────────────────────────────
   const ORG_TYPES = ['pharmacy', 'hospital', 'distributor', 'clinic', 'corporate'];
-  const CHAIN_PREFIX = ['Lazz', 'Tamanna', 'Shohag', 'Al-Madina', 'Popular', 'Ibn Sina', 'Labaid', 'Square', 'United', 'Prescription'];
-  const CHAIN_SUFFIX = ['Pharma', 'Pharmacy', 'Medicine Corner', 'Drug House', 'Medical Hall', 'Diagnostics', 'Hospital', 'Clinic'];
+  const { prefix: CHAIN_PREFIX, suffix: CHAIN_SUFFIX } = DEMO.customerChains;
+  const HQ = DEMO.headOffice;
 
   const customerRows: any[] = [];
   const seen = new Set<string>();
   while (customerRows.length < 120) {
-    const name = `${pick(CHAIN_PREFIX)} ${pick(CHAIN_SUFFIX)} — ${pick([...DHAKA_AREAS, ...DISTRICTS])}`;
+    // Two thirds sit in the head-office city, the rest in a secondary
+    // city — enough spread that the tracking map has to zoom out, which
+    // is the case the clustering code needs to be exercised against.
+    const inHomeCity = chance(65);
+    const outpost = pick(DEMO.cities);
+    const locality = inHomeCity ? pick(DEMO.areas) : outpost.name;
+
+    const name = `${pick(CHAIN_PREFIX)} ${pick(CHAIN_SUFFIX)} — ${locality}`;
     if (seen.has(name)) continue;
     seen.add(name);
-    const inDhaka = chance(65);
+
     customerRows.push({
       companyId: org.primaryCompanyId,
       name,
       code: `CUS-${String(customerRows.length + 1).padStart(4, '0')}`,
-      address: `${randInt(1, 200)}, ${pick(DHAKA_AREAS)}`,
-      city: inDhaka ? 'Dhaka' : pick(DISTRICTS),
-      // Coordinates scattered around Dhaka / the chosen district.
-      lat: round2(inDhaka ? 23.72 + (rng() - 0.5) * 0.22 : 22.3 + rng() * 2.4),
-      lng: round2(inDhaka ? 90.4 + (rng() - 0.5) * 0.22 : 89.5 + rng() * 2.4),
+      address: `${randInt(1, 200)} ${pick(DEMO.areas)}`,
+      city: inHomeCity ? HQ.city : outpost.name,
+      // Scattered within roughly 10 km of whichever centre applies.
+      lat: round2((inHomeCity ? HQ.lat : outpost.lat) + (rng() - 0.5) * 0.18),
+      lng: round2((inHomeCity ? HQ.lng : outpost.lng) + (rng() - 0.5) * 0.18),
       contactLevel: pick(['A_PLUS', 'A', 'A', 'B', 'B', 'B', 'C', 'C', 'D'] as const),
       orgType: pick(ORG_TYPES),
-      contactPerson: `${pick(['Dr.', 'Mr.', 'Ms.'])} ${pick(SURNAMES)}`,
-      contactPhone: `01${randInt(3, 9)}${randInt(10_000_000, 99_999_999)}`,
+      contactPerson: `${pick(['Dr.', 'Mr.', 'Ms.'])} ${pick(DEMO.names.surnames)}`,
+      contactPhone: phone(),
     });
   }
   await prisma.customer.createMany({ data: customerRows });
@@ -62,7 +69,7 @@ export async function seedField(org: OrgResult): Promise<void> {
 
     for (const day of days) {
       if (day < emp.joiningDate) continue;
-      if (day.getUTCDay() === 5) continue; // Friday off
+      if (PACK.weekendDays.includes(day.getUTCDay())) continue; // Friday off
       if (!chance(72)) continue;           // not every day is a field day
 
       const visitsToday = randInt(2, 6);
@@ -79,7 +86,7 @@ export async function seedField(org: OrgResult): Promise<void> {
           visitDate: day,
           checkInAt: checkIn,
           checkOutAt: new Date(checkIn.getTime() + durationMin * 60_000),
-          personVisited: `${pick(['Dr.', 'Mr.', 'Ms.', 'Proprietor'])} ${pick(SURNAMES)}`,
+          personVisited: `${pick(['Dr.', 'Mr.', 'Ms.', 'Proprietor'])} ${pick(DEMO.names.surnames)}`,
           purpose: pick([
             'Product detailing — new SKU introduction',
             'Order collection',
@@ -95,7 +102,7 @@ export async function seedField(org: OrgResult): Promise<void> {
             'Requested sample',
             'Escalated to distributor',
           ]),
-          orderValue: chance(45) ? round2(randInt(2, 180) * 1_000) : null,
+          orderValue: chance(45) ? salary(randInt(2, 180) * 1_000) : null,
           lat: customer.lat ? round2(customer.lat + jitter()) : null,
           lng: customer.lng ? round2(customer.lng + jitter()) : null,
           distanceM: randInt(3, 140),
@@ -157,7 +164,7 @@ export async function seedField(org: OrgResult): Promise<void> {
     for (let dayOffset = 14; dayOffset >= 0; dayOffset--) {
       const day = addDays(TODAY, -dayOffset);
       if (day < emp.joiningDate) continue;
-      if (day.getUTCDay() === 5) continue;
+      if (PACK.weekendDays.includes(day.getUTCDay())) continue;
       if (!chance(70)) continue;
 
       const isToday = dayOffset === 0;
@@ -165,9 +172,9 @@ export async function seedField(org: OrgResult): Promise<void> {
       const startedAt = atTime(day, '09:30', randInt(0, 45));
       const durationMin = ongoing ? randInt(60, 240) : randInt(240, 480);
 
-      // Walk a plausible route: start near Dhaka centre and drift.
-      let lat = 23.75 + (rng() - 0.5) * 0.12;
-      let lng = 90.4 + (rng() - 0.5) * 0.12;
+      // Walk a plausible route: start near the head office and drift.
+      let lat = DEMO.headOffice.lat + (rng() - 0.5) * 0.12;
+      let lng = DEMO.headOffice.lng + (rng() - 0.5) * 0.12;
       const points: { recordedAt: Date; lat: number; lng: number; accuracyM: number; speedKph: number }[] = [];
       let distanceKm = 0;
 

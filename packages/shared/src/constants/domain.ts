@@ -88,8 +88,15 @@ export const LEAVE_TYPE_COLORS: Record<string, string> = {
   lwp: '#64748B',
 };
 
-/** Bangladesh weekend: Friday + Saturday. */
-export const BD_WEEKEND_DAYS = [5, 6];
+/**
+ * Weekend when a tenant has not been given a country pack.
+ *
+ * Saturday + Sunday. Every code path that can reach a Company row should
+ * read `company.weekendDays` (or its pack) instead — this constant exists
+ * only for the handful of places that legitimately have no tenant in
+ * scope, such as a pure date utility under test.
+ */
+export const DEFAULT_WEEKEND_DAYS = [6, 0];
 
 export const WEEKDAY_LABELS = [
   'Sunday',
@@ -133,14 +140,18 @@ export const REPORT_TYPES = [
 
 export type ReportType = (typeof REPORT_TYPES)[number];
 
-/** Disbursement instrument codes used by Bangladeshi banks. */
+/**
+ * Disbursement instruments offered when no country pack is in scope.
+ *
+ * Country packs override this with their own domestic rails — see
+ * `CountryPack.bankTransferTypes`.
+ */
 export const BANK_TXN_TYPES = [
-  { code: 'EBLACT', label: 'EBL ACCOUNT FUND TRANSFER' },
-  { code: 'BEFTN', label: 'BEFTN — Bangladesh Electronic Funds Transfer Network' },
-  { code: 'RTGS', label: 'RTGS — Real Time Gross Settlement' },
-  { code: 'NPSB', label: 'NPSB — National Payment Switch Bangladesh' },
+  { code: 'ACH', label: 'ACH / domestic bank transfer' },
+  { code: 'WIRE', label: 'Wire transfer' },
+  { code: 'SWIFT', label: 'SWIFT international wire' },
   { code: 'CASH', label: 'Cash disbursement' },
-  { code: 'MFS', label: 'Mobile Financial Service (bKash / Nagad)' },
+  { code: 'WALLET', label: 'Mobile money / wallet' },
 ];
 
 export const CLEARANCE_DEPARTMENTS_DEFAULT = [

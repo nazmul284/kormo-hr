@@ -1,0 +1,68 @@
+name: Country pack request
+description: Ask for — or offer — support for another country
+labels: ['country-pack', 'good first issue']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Adding a country is two files and no changes anywhere else. If you know
+        the rules, [docs/LOCALIZATION.md](../blob/main/docs/LOCALIZATION.md)
+        walks through it — pull requests are very welcome.
+
+  - type: input
+    id: country
+    attributes:
+      label: Country
+      placeholder: Kenya (KE)
+    validations:
+      required: true
+
+  - type: input
+    id: currency
+    attributes:
+      label: Currency and grouping
+      placeholder: KES, western 3-digit grouping
+    validations:
+      required: true
+
+  - type: input
+    id: weekend
+    attributes:
+      label: Weekend days
+      placeholder: Saturday + Sunday
+    validations:
+      required: true
+
+  - type: input
+    id: fiscal-year
+    attributes:
+      label: Tax year start
+      placeholder: 1 July
+    validations:
+      required: true
+
+  - type: textarea
+    id: tax
+    attributes:
+      label: Income tax structure
+      description: >
+        Bands and rates, whether the exemption is a flat standard deduction or
+        scales with earnings, and any statutory minimum. A link to the
+        authority's own page is ideal.
+
+  - type: input
+    id: fictional-numbers
+    attributes:
+      label: Reserved fictional phone range
+      description: >
+        A range the regulator publishes for drama and documentation, if there
+        is one. If not, say so — the pack will use an all-zero subscriber body
+        instead. Seeded numbers must never be able to ring a real person.
+      placeholder: None published / 07700 900000–900999 (Ofcom)
+
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I can write this pack myself

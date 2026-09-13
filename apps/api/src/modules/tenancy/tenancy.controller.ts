@@ -22,7 +22,8 @@ export class TenancyController {
       where: { id: { in: user.accessibleCompanyIds } },
       select: {
         id: true, name: true, alias: true, logoPath: true, timezone: true,
-        currency: true, fiscalYearStartMonth: true, isActive: true,
+        country: true, currency: true, locale: true, weekendDays: true,
+        fiscalYearStartMonth: true, isActive: true,
         _count: { select: { employees: { where: { active: true } } } },
       },
       orderBy: { id: 'asc' },

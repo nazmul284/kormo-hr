@@ -18,10 +18,17 @@ export function secondsToHm(seconds: number | null | undefined): string {
   return minutesToHm(Math.round(seconds / 60));
 }
 
-/** Date → "HH:mm:ss" in the tenant's timezone offset (minutes). */
+/**
+ * Date → "HH:mm:ss" at a given offset from UTC, in minutes.
+ *
+ * The default is 0, not a guess at where the deployment is: a
+ * wrong-by-six-hours default silently shifts every clock-in, which shows
+ * up as a fleet-wide late-arrival spike nobody can explain. Callers with
+ * a tenant in scope pass its offset.
+ */
 export function timeOfDay(
   value: Date | string | null | undefined,
-  offsetMinutes = 360, // Asia/Dhaka = UTC+6
+  offsetMinutes = 0,
 ): string {
   if (!value) return '--';
   const d = typeof value === 'string' ? new Date(value) : value;

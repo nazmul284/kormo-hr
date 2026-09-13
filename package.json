@@ -2,7 +2,7 @@
   "name": "kormo-hr",
   "version": "1.0.0",
   "private": true,
-  "description": "Kormo HR \u2014 multi-tenant Human Resource Management Suite (employee lifecycle: onboarding to clearance)",
+  "description": "Kormo HR \u2014 open-source multi-tenant HRMS. Attendance, leave, payroll, income tax, performance and the full employee lifecycle, with pluggable country packs.",
   "workspaces": [
     "apps/api",
     "apps/web",
@@ -21,6 +21,9 @@
     "db:reset": "npm run prisma:reset -w @kormo/api",
     "db:seed": "npm run seed -w @kormo/api",
     "db:studio": "npm run prisma:studio -w @kormo/api",
+    "demo:build": "npm run build -w @kormo/shared && npm run build:demo -w @kormo/web",
+    "demo:capture": "node scripts/capture-demo.mjs",
+    "demo:preview": "npm run demo:build && npx --yes serve apps/web/out -l 4173",
     "dev": "concurrently -k -n api,web -c cyan,magenta \"npm run dev -w @kormo/api\" \"npm run dev -w @kormo/web\"",
     "dev:api": "npm run dev -w @kormo/api",
     "dev:web": "npm run dev -w @kormo/web",
@@ -39,5 +42,30 @@
   "devDependencies": {
     "concurrently": "^9.1.2",
     "puppeteer-core": "^23.11.1"
-  }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nazmul284/kormo-hr.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nazmul284/kormo-hr/issues"
+  },
+  "homepage": "https://nazmul284.github.io/kormo-hr/",
+  "keywords": [
+    "hrms",
+    "hris",
+    "human-resources",
+    "payroll",
+    "attendance",
+    "leave-management",
+    "performance-management",
+    "multi-tenant",
+    "nestjs",
+    "nextjs",
+    "prisma",
+    "postgresql",
+    "typescript",
+    "open-source"
+  ]
 }

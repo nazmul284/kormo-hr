@@ -12,10 +12,9 @@ import {
 } from '@kormo/shared';
 
 import {
-  BANKS, BLOOD_GROUPS, DEGREES, DHAKA_AREAS, DISTRICTS, FEMALE_FIRST, MALE_FIRST,
-  PREV_EMPLOYERS, RELIGIONS, SURNAMES, TODAY, UNIVERSITIES,
-  addDays, addMonths, bdPhone, chance, d, iso, log, nid, pick, pickN, prisma,
-  randInt, rng, round2, section, slugify, tin,
+  BLOOD_GROUPS, DEMO, PACK, TODAY,
+  addDays, addMonths, chance, d, iso, log, nationalId, phone, pick, pickN, prisma,
+  randInt, rng, round2, salary, section, slugify, splitGross, taxId,
 } from './lib';
 
 export interface SeededEmployee {
@@ -65,7 +64,14 @@ const DEPARTMENTS = [
   'Field Force',
 ];
 
-/** name, grade, seniority level, monthly gross (BDT) */
+/**
+ * name, grade, seniority level, monthly gross.
+ *
+ * Figures are in the pack's currency and are scaled by
+ * `SALARY_SCALE` below, so one table drives every country: a number
+ * that reads as a senior salary in taka reads as a rounding error in
+ * dollars, and vice versa.
+ */
 const DESIGNATIONS: [string, string, number, number][] = [
   ['Managing Director', '1a', 10, 450_000],
   ['Chief Technology Officer', '1b', 9, 320_000],
@@ -144,51 +150,69 @@ const DEMO_ACCOUNTS: {
   department: string;
   role: string;
   gender: 'MALE' | 'FEMALE';
-  firstName: string;
-  lastName: string;
   description: string;
+  /** Baseline monthly gross, pre-scaling. Omitted = take the designation's. */
   gross?: number;
 }[] = [
   {
     username: 'md', designation: 'Managing Director', department: 'Executive Office',
-    role: SYSTEM_ROLES.SUPER_ADMIN, gender: 'MALE', firstName: 'Rezaul', lastName: 'Karim',
+    role: SYSTEM_ROLES.SUPER_ADMIN, gender: 'MALE',
     description: 'Managing Director — sees every company, every module',
   },
   {
     username: 'admin', designation: 'Senior Manager', department: 'Technology',
-    role: SYSTEM_ROLES.IT_ADMIN, gender: 'MALE', firstName: 'Nazmul', lastName: 'Hossain',
+    role: SYSTEM_ROLES.IT_ADMIN, gender: 'MALE',
     description: 'IT administrator — platform + onboarding IT lane',
   },
   {
     username: 'hr.admin', designation: 'Head of Human Resources', department: 'Human Resources',
-    role: SYSTEM_ROLES.HR_ADMIN, gender: 'FEMALE', firstName: 'Nusrat', lastName: 'Jahan',
+    role: SYSTEM_ROLES.HR_ADMIN, gender: 'FEMALE',
     description: 'Head of HR — policies, approvals, onboarding, clearance',
   },
   {
     username: 'payroll', designation: 'Manager', department: 'Finance & Accounts',
-    role: SYSTEM_ROLES.PAYROLL_ADMIN, gender: 'MALE', firstName: 'Mizanur', lastName: 'Rahman',
+    role: SYSTEM_ROLES.PAYROLL_ADMIN, gender: 'MALE',
     description: 'Payroll manager — payroll runs, tax configuration',
   },
   {
     username: 'manager', designation: 'Manager', department: 'Technology',
-    role: SYSTEM_ROLES.LINE_MANAGER, gender: 'MALE', firstName: 'Tanvir', lastName: 'Ahmed',
+    role: SYSTEM_ROLES.LINE_MANAGER, gender: 'MALE',
     description: 'Line manager with direct reports — the approval inbox',
   },
   {
     username: 'employee', designation: 'Senior Software Engineer', department: 'Technology',
-    role: SYSTEM_ROLES.EMPLOYEE, gender: 'MALE', firstName: 'Sabbir', lastName: 'Islam',
+    role: SYSTEM_ROLES.EMPLOYEE, gender: 'MALE',
     // Pinned (rather than taken from the designation table) so this
     // account's tax statement is stable across reseeds — the docs quote
     // its figures.
-    gross: 92_000,
+    gross: 92_000, // baseline; scaled into the pack's currency by salary()
     description: 'Individual contributor — pure self-service view',
   },
   {
     username: 'field', designation: 'Medical Promotion Officer', department: 'Field Force',
-    role: SYSTEM_ROLES.FIELD_FORCE, gender: 'MALE', firstName: 'Rakib', lastName: 'Uddin',
+    role: SYSTEM_ROLES.FIELD_FORCE, gender: 'MALE',
     description: 'Field force — customer visits and GPS tracking',
   },
 ];
+
+/**
+ * Names for the seven demo accounts, drawn from the country pack.
+ *
+ * Taken by index rather than at random so `md` is the same person on
+ * every reseed — the README, the screenshots and the smoke tests all
+ * quote these accounts by name, and a demo whose Managing Director is
+ * called something different each run is not documentable.
+ */
+function demoAccountName(
+  gender: 'MALE' | 'FEMALE',
+  index: number,
+): { firstName: string; lastName: string } {
+  const first = gender === 'MALE' ? DEMO.names.male : DEMO.names.female;
+  return {
+    firstName: first[index % first.length],
+    lastName: DEMO.names.surnames[index % DEMO.names.surnames.length],
+  };
+}
 
 /**
  * Demo tenant identity.
@@ -198,19 +222,26 @@ const DEMO_ACCOUNTS: {
  * default is deliberately fictional, and the mail domain uses the reserved
  * `.example` TLD so a seeded address can never reach a real inbox.
  */
-const TENANT = {
+export const TENANT = {
   primary: {
-    name: process.env.SEED_COMPANY_NAME ?? 'Shurjo Pharma Ltd',
-    alias: process.env.SEED_COMPANY_ALIAS ?? 'shurjo',
+    name: process.env.SEED_COMPANY_NAME ?? DEMO.tenant.name,
+    alias: process.env.SEED_COMPANY_ALIAS ?? DEMO.tenant.alias,
     /** Prefix for the HR-facing unique tag on each employee record. */
-    tagPrefix: process.env.SEED_COMPANY_TAG_PREFIX ?? 'SPL',
-    domain: process.env.SEED_COMPANY_DOMAIN ?? 'shurjo.example',
+    tagPrefix: process.env.SEED_COMPANY_TAG_PREFIX ?? DEMO.tenant.tagPrefix,
+    domain: process.env.SEED_COMPANY_DOMAIN ?? DEMO.tenant.domain,
   },
   secondary: {
-    name: process.env.SEED_SECOND_COMPANY_NAME ?? 'Shurjo Logistics Ltd',
-    alias: process.env.SEED_SECOND_COMPANY_ALIAS ?? 'shurjo-logistics',
+    name: process.env.SEED_SECOND_COMPANY_NAME ?? DEMO.tenant.secondName,
+    alias: process.env.SEED_SECOND_COMPANY_ALIAS ?? DEMO.tenant.secondAlias,
   },
 };
+
+/** Postal address of the head office, assembled from the demo pack. */
+const HQ_ADDRESS = [
+  DEMO.headOffice.addressLine,
+  `${DEMO.headOffice.city} ${DEMO.headOffice.postalCode}`.trim(),
+  DEMO.countryName,
+].join(', ');
 
 export async function seedOrg(): Promise<OrgResult> {
   section('Tenancy & organisation');
@@ -224,11 +255,16 @@ export async function seedOrg(): Promise<OrgResult> {
       name: TENANT.primary.name,
       alias: TENANT.primary.alias,
       legalName: TENANT.primary.name.replace(/ Ltd$/, ' Limited'),
-      tin: '123456789012', bin: '004512345-0101',
-      address: 'House 42, Road 11, Banani, Dhaka 1213, Bangladesh',
+      tin: taxId(), bin: `${nationalId()}-0101`,
+      address: HQ_ADDRESS,
       contactEmail: `people@${TENANT.primary.domain}`,
-      contactPhone: '+8809610003030',
-      timezone: 'Asia/Dhaka', currency: 'BDT', fiscalYearStartMonth: 7,
+      contactPhone: phone(),
+      country: PACK.code,
+      timezone: PACK.timezone,
+      currency: PACK.currency.code,
+      locale: PACK.locale,
+      weekendDays: PACK.weekendDays,
+      fiscalYearStartMonth: PACK.tax?.fiscalYearStartMonth ?? 1,
     },
   });
   const logistics = await prisma.company.create({
@@ -236,10 +272,20 @@ export async function seedOrg(): Promise<OrgResult> {
       name: TENANT.secondary.name,
       alias: TENANT.secondary.alias,
       legalName: TENANT.secondary.name.replace(/ Ltd$/, ' Limited'),
-      tin: '987654321098',
-      address: 'Plot 7, Tejgaon Industrial Area, Dhaka 1208, Bangladesh',
+      tin: taxId(),
+      address: [
+        DEMO.secondSite.addressLine,
+        `${DEMO.secondSite.city} ${DEMO.secondSite.postalCode}`.trim(),
+        DEMO.countryName,
+      ].join(', '),
       contactEmail: `ops@${TENANT.secondary.alias}.example`,
-      timezone: 'Asia/Dhaka', currency: 'BDT', fiscalYearStartMonth: 7,
+      contactPhone: phone(),
+      country: PACK.code,
+      timezone: PACK.timezone,
+      currency: PACK.currency.code,
+      locale: PACK.locale,
+      weekendDays: PACK.weekendDays,
+      fiscalYearStartMonth: PACK.tax?.fiscalYearStartMonth ?? 1,
     },
   });
   log('created companies', `${primary.name}, ${logistics.name}`);
@@ -266,12 +312,19 @@ export async function seedOrg(): Promise<OrgResult> {
   log('enabled feature flags', `${allFlags.length} keys x 2 tenants`);
 
   // ── locations ──────────────────────────────────────────────────────
+  //
+  // Four sites for the main tenant plus one for the logistics arm, laid
+  // out around the pack's head office and its two largest secondary
+  // cities. Real coordinates, so the geofence and the tracking map have
+  // something to draw against.
+  const hq = DEMO.headOffice;
+  const [branchA, branchB] = DEMO.cities;
   const locationSpec = [
-    { companyId: primary.id, name: 'Head Office — Banani', alias: 'HO-BANANI', city: 'Dhaka', lat: 23.7936, lng: 90.4043, geofenceM: 150 },
-    { companyId: primary.id, name: 'Tejgaon Warehouse', alias: 'WH-TEJGAON', city: 'Dhaka', lat: 23.7639, lng: 90.3944, geofenceM: 250 },
-    { companyId: primary.id, name: 'Chattogram Branch', alias: 'BR-CTG', city: 'Chattogram', lat: 22.3569, lng: 91.7832, geofenceM: 150 },
-    { companyId: primary.id, name: 'Sylhet Branch', alias: 'BR-SYL', city: 'Sylhet', lat: 24.8949, lng: 91.8687, geofenceM: 150 },
-    { companyId: logistics.id, name: 'Logistics Hub — Tejgaon', alias: 'LOG-HUB', city: 'Dhaka', lat: 23.7601, lng: 90.3915, geofenceM: 300 },
+    { companyId: primary.id, name: `Head Office — ${DEMO.areas[0]}`, alias: 'HO-MAIN', city: hq.city, lat: hq.lat, lng: hq.lng, geofenceM: 150 },
+    { companyId: primary.id, name: `${DEMO.areas[1]} Warehouse`, alias: 'WH-MAIN', city: hq.city, lat: round2(hq.lat - 0.03), lng: round2(hq.lng - 0.01), geofenceM: 250 },
+    { companyId: primary.id, name: `${branchA.name} Branch`, alias: 'BR-A', city: branchA.name, lat: branchA.lat, lng: branchA.lng, geofenceM: 150 },
+    { companyId: primary.id, name: `${branchB.name} Branch`, alias: 'BR-B', city: branchB.name, lat: branchB.lat, lng: branchB.lng, geofenceM: 150 },
+    { companyId: logistics.id, name: `Logistics Hub — ${DEMO.areas[1]}`, alias: 'LOG-HUB', city: DEMO.secondSite.city, lat: round2(hq.lat - 0.04), lng: round2(hq.lng - 0.015), geofenceM: 300 },
   ];
   const locations: Location[] = [];
   for (const spec of locationSpec) {
@@ -344,20 +397,29 @@ export async function seedOrg(): Promise<OrgResult> {
   log('created system roles', roleSpec.map((r) => r.key).join(', '));
 
   // ── salary components ──────────────────────────────────────────────
+  // The earning heads come from the country pack — Bangladesh splits
+  // gross four ways, the US and UK do not split it at all — plus the
+  // fixed allowances and the deduction, which every pack shares.
+  const earningHeads = PACK.tax?.earningComponents
+    ?? [{ code: 'BASIC', label: 'Basic Salary', pctOfGross: 100 }];
   for (const companyId of [primary.id, logistics.id]) {
     await prisma.salaryComponent.createMany({
       data: [
-        { companyId, code: 'BASIC', name: 'Basic Salary', calcType: 'PCT_OF_GROSS', value: 50, isTaxable: true, isEarning: true, sortOrder: 1 },
-        { companyId, code: 'HOUSE_RENT', name: 'House Rent Allowance', calcType: 'PCT_OF_GROSS', value: 30, isTaxable: true, isEarning: true, sortOrder: 2 },
-        { companyId, code: 'CONVEYANCE', name: 'Conveyance Allowance', calcType: 'PCT_OF_GROSS', value: 10, isTaxable: true, isEarning: true, sortOrder: 3 },
-        { companyId, code: 'MEDICAL', name: 'Medical Allowance', calcType: 'PCT_OF_GROSS', value: 10, isTaxable: true, isEarning: true, sortOrder: 4 },
+        ...earningHeads.map((head, i) => ({
+          companyId, code: head.code, name: head.label,
+          calcType: 'PCT_OF_GROSS' as const, value: head.pctOfGross,
+          isTaxable: head.isTaxable ?? true, isEarning: true, sortOrder: i + 1,
+        })),
         { companyId, code: 'PF_EMP', name: 'Provident Fund (employee)', calcType: 'PCT_OF_BASIC', value: 10, isTaxable: false, isEarning: false, sortOrder: 10 },
-        { companyId, code: 'MOBILE', name: 'Mobile Allowance', calcType: 'FIXED', value: 1_000, isTaxable: true, isEarning: true, sortOrder: 5 },
-        { companyId, code: 'TRANSPORT', name: 'Transport Allowance', calcType: 'FIXED', value: 2_500, isTaxable: true, isEarning: true, sortOrder: 6 },
+        { companyId, code: 'MOBILE', name: 'Mobile Allowance', calcType: 'FIXED', value: salary(1_000), isTaxable: true, isEarning: true, sortOrder: 8 },
+        { companyId, code: 'TRANSPORT', name: 'Transport Allowance', calcType: 'FIXED', value: salary(2_500), isTaxable: true, isEarning: true, sortOrder: 9 },
       ],
     });
   }
-  log('created salary components', 'Basic 50 / House 30 / Conveyance 10 / Medical 10');
+  log(
+    'created salary components',
+    earningHeads.map((h) => `${h.code} ${h.pctOfGross}`).join(' / '),
+  );
 
   // ── profile self-service whitelist ─────────────────────────────────
   for (const companyId of [primary.id, logistics.id]) {
@@ -382,7 +444,9 @@ export async function seedOrg(): Promise<OrgResult> {
   const targetCount = Number(process.env.SEED_EMPLOYEE_COUNT ?? 64);
   const designationByName = new Map(designations.map((x) => [x.name, x]));
   const deptByName = new Map(departments.map((x) => [x.name, x]));
-  const grossByName = new Map(DESIGNATIONS.map(([name, , , gross]) => [name, gross]));
+  // Scaled into the pack's currency here, once, so every downstream
+  // consumer (payroll, tax, payslips) sees one consistent figure.
+  const grossByName = new Map(DESIGNATIONS.map(([name, , , gross]) => [name, salary(gross)]));
   const levelByName = new Map(DESIGNATIONS.map(([name, , level]) => [name, level]));
 
   const employees: SeededEmployee[] = [];
@@ -419,7 +483,7 @@ export async function seedOrg(): Promise<OrgResult> {
     const status = opts.employmentStatus ?? 'PERMANENT';
     const probationStart = opts.joiningDate;
     const confirmation = status === 'PERMANENT' ? addDays(opts.joiningDate, 180) : null;
-    const religion = pick(RELIGIONS);
+    const religion = pick(DEMO.religions);
     const birthDate = addDays(d(`${TODAY.getUTCFullYear() - randInt(23, 52)}-01-01`), randInt(0, 364));
 
     const employee = await prisma.employee.create({
@@ -432,21 +496,21 @@ export async function seedOrg(): Promise<OrgResult> {
         lastName: opts.lastName,
         email: `${username}@${TENANT.primary.domain}`,
         officialEmail: `${username}@${TENANT.primary.domain}`,
-        personalEmail: `${username}${randInt(10, 99)}@gmail.example`,
-        officialContact: bdPhone(),
-        alternateNumber: chance(60) ? bdPhone() : null,
-        fatherName: `${pick(MALE_FIRST)} ${opts.lastName}`,
-        motherName: `${pick(FEMALE_FIRST)} ${pick(SURNAMES)}`,
+        personalEmail: `${username}${randInt(10, 99)}@personal.example`,
+        officialContact: phone(),
+        alternateNumber: chance(60) ? phone() : null,
+        fatherName: `${pick(DEMO.names.male)} ${opts.lastName}`,
+        motherName: `${pick(DEMO.names.female)} ${pick(DEMO.names.surnames)}`,
         birthDate,
         actualBirthDate: chance(15) ? addDays(birthDate, randInt(-400, 400)) : birthDate,
         gender: opts.gender,
-        nationality: 'Bangladeshi',
-        countryOfBirth: 'Bangladesh',
+        nationality: DEMO.nationality,
+        countryOfBirth: DEMO.countryName,
         religion,
         maritalStatus: level >= 5 || chance(45) ? 'MARRIED' : 'SINGLE',
         bloodGroup: pick(BLOOD_GROUPS),
-        nidNumber: nid(),
-        tinNumber: chance(80) ? tin() : null,
+        nidNumber: nationalId(),
+        tinNumber: chance(80) ? taxId() : null,
         passportNo: chance(35) ? `BX${randInt(1_000_000, 9_999_999)}` : null,
         drivingLicenseNo: chance(20) ? `DL${randInt(100_000, 999_999)}` : null,
         rfid: `RF${String(visibleSeq).padStart(6, '0')}`,
@@ -474,7 +538,7 @@ export async function seedOrg(): Promise<OrgResult> {
       await prisma.employee.update({
         where: { id: employee.id },
         data: {
-          spouseName: `${opts.gender === 'MALE' ? pick(FEMALE_FIRST) : pick(MALE_FIRST)} ${pick(SURNAMES)}`,
+          spouseName: `${opts.gender === 'MALE' ? pick(DEMO.names.female) : pick(DEMO.names.male)} ${pick(DEMO.names.surnames)}`,
           spouseDateOfBirth: addDays(birthDate, randInt(-1500, 1500)),
         },
       });
@@ -505,18 +569,21 @@ export async function seedOrg(): Promise<OrgResult> {
 
   function randomName(gender: 'MALE' | 'FEMALE') {
     return {
-      firstName: gender === 'MALE' ? pick(MALE_FIRST) : pick(FEMALE_FIRST),
-      lastName: pick(SURNAMES),
+      firstName: gender === 'MALE' ? pick(DEMO.names.male) : pick(DEMO.names.female),
+      lastName: pick(DEMO.names.surnames),
     };
   }
 
   const hoLocation = locations[0].id;
-  const demoByUsername = new Map(DEMO_ACCOUNTS.map((a) => [a.username, a]));
+  // Names are resolved from the country pack here, once, so the rest of
+  // the function can treat a demo spec as though it carried its own name.
+  const demoByUsername = new Map(
+    DEMO_ACCOUNTS.map((a, i) => [a.username, { ...a, ...demoAccountName(a.gender, i) }]),
+  );
 
   // 1 ── Managing Director
   const mdSpec = demoByUsername.get('md')!;
   const md = await createEmployee({
-    ...randomName('MALE'),
     firstName: mdSpec.firstName, lastName: mdSpec.lastName, gender: mdSpec.gender,
     designationName: mdSpec.designation, departmentName: mdSpec.department,
     companyId: primary.id, locationId: hoLocation, lineManagerId: null,
@@ -531,7 +598,7 @@ export async function seedOrg(): Promise<OrgResult> {
     {
       designation: 'Head of Human Resources', department: 'Human Resources',
       username: 'hr.admin', role: SYSTEM_ROLES.HR_ADMIN, gender: 'FEMALE',
-      firstName: 'Nusrat', lastName: 'Jahan',
+      ...demoAccountName('FEMALE', DEMO_ACCOUNTS.findIndex((a) => a.username === 'hr.admin')),
     },
     { designation: 'Head of Sales', department: 'Sales & Distribution' },
     { designation: 'Head of Supply Chain', department: 'Supply Chain' },
@@ -631,7 +698,7 @@ export async function seedOrg(): Promise<OrgResult> {
         : chance(80) ? hoLocation : pick(locations.slice(0, 4)).id,
       lineManagerId: manager.id,
       username: demo?.username, roleKey: demo?.role ?? SYSTEM_ROLES.EMPLOYEE,
-      gross: demo?.gross,
+      gross: demo?.gross === undefined ? undefined : salary(demo.gross),
       joiningDate,
       employmentStatus: status as never,
     });
@@ -695,28 +762,34 @@ export async function seedOrg(): Promise<OrgResult> {
   const documentRows: any[] = [];
 
   for (const emp of employees) {
-    const area = pick(DHAKA_AREAS);
-    const homeDistrict = pick(DISTRICTS);
+    // Present address sits in the head-office city; the permanent one in
+    // whichever region the employee is from, which is what makes the
+    // "home district" column on the directory worth having.
+    const area = pick(DEMO.areas);
+    const homeRegion = pick(DEMO.regions);
+    const homeCity = pick(DEMO.cities).name;
     addressRows.push(
       {
         employeeId: emp.id, kind: 'PRESENT', village: area,
-        buildingNo: `House ${randInt(1, 90)}`, streetNo: `Road ${randInt(1, 32)}`,
-        city: 'Dhaka', state: 'Dhaka', postalCode: String(randInt(1200, 1230)), country: 'Bangladesh',
+        buildingNo: `Building ${randInt(1, 90)}`, streetNo: `Street ${randInt(1, 32)}`,
+        city: DEMO.headOffice.city, state: DEMO.headOffice.region,
+        postalCode: DEMO.headOffice.postalCode, country: DEMO.countryName,
       },
       {
-        employeeId: emp.id, kind: 'PERMANENT', village: `${pick(['Purba', 'Paschim', 'Uttar', 'Dakshin'])} ${pick(SURNAMES)}para`,
-        buildingNo: `Holding ${randInt(1, 200)}`, streetNo: `Ward ${randInt(1, 12)}`,
-        city: homeDistrict, state: homeDistrict, postalCode: String(randInt(1000, 9499)), country: 'Bangladesh',
+        employeeId: emp.id, kind: 'PERMANENT', village: pick(DEMO.areas),
+        buildingNo: `Building ${randInt(1, 200)}`, streetNo: `Street ${randInt(1, 12)}`,
+        city: homeCity, state: homeRegion,
+        postalCode: DEMO.headOffice.postalCode, country: DEMO.countryName,
       },
     );
 
     emergencyRows.push({
       employeeId: emp.id,
-      name: `${pick([...MALE_FIRST, ...FEMALE_FIRST])} ${emp.lastName}`,
+      name: `${pick([...DEMO.names.male, ...DEMO.names.female])} ${emp.lastName}`,
       relation: pick(['Father', 'Mother', 'Spouse', 'Brother', 'Sister']),
-      phone: bdPhone(),
-      email: chance(50) ? `emergency${randInt(10, 99)}@gmail.example` : null,
-      address: `House ${randInt(1, 90)}, Road ${randInt(1, 32)}, ${area}, Dhaka`,
+      phone: phone(),
+      email: chance(50) ? `emergency${randInt(10, 99)}@personal.example` : null,
+      address: `Building ${randInt(1, 90)}, Street ${randInt(1, 32)}, ${area}, ${DEMO.headOffice.city}`,
       isPrimary: true,
     });
 
@@ -726,22 +799,22 @@ export async function seedOrg(): Promise<OrgResult> {
     for (let i = 0; i < nomineeCount; i++) {
       nomineeRows.push({
         employeeId: emp.id,
-        name: `${pick([...MALE_FIRST, ...FEMALE_FIRST])} ${pick(SURNAMES)}`,
+        name: `${pick([...DEMO.names.male, ...DEMO.names.female])} ${pick(DEMO.names.surnames)}`,
         relation: i === 0 ? pick(['Spouse', 'Father', 'Mother']) : pick(['Son', 'Daughter', 'Brother']),
         sharePct: shares[i],
-        nid: nid(),
-        phone: bdPhone(),
-        address: `${area}, Dhaka`,
+        nid: nationalId(),
+        phone: phone(),
+        address: `${area}, ${DEMO.headOffice.city}`,
       });
     }
 
     const degreeCount = emp.level >= 5 ? 2 : 1;
-    const degrees = pickN(DEGREES, degreeCount);
+    const degrees = pickN(DEMO.degrees, degreeCount);
     degrees.forEach((deg, i) => {
       educationRows.push({
         employeeId: emp.id,
         degree: deg.degree,
-        institute: pick(UNIVERSITIES),
+        institute: pick(DEMO.universities),
         major: deg.major,
         result: pick(['CGPA 3.92 / 4.00', 'CGPA 3.65 / 4.00', 'CGPA 3.41 / 4.00', 'First Class']),
         passingYear: emp.joiningDate.getUTCFullYear() - randInt(1, 8),
@@ -757,7 +830,7 @@ export async function seedOrg(): Promise<OrgResult> {
       const from = addDays(to, -randInt(400, 1100));
       experienceRows.push({
         employeeId: emp.id,
-        companyName: pick(PREV_EMPLOYERS),
+        companyName: pick(DEMO.employers),
         designation: pick(['Officer', 'Executive', 'Senior Officer', 'Engineer', 'Analyst']),
         fromDate: from,
         toDate: to,
@@ -766,7 +839,7 @@ export async function seedOrg(): Promise<OrgResult> {
       cursor = addDays(from, -randInt(15, 60));
     }
 
-    const bank = pick(BANKS);
+    const bank = pick(DEMO.banks);
     bankRows.push({
       employeeId: emp.id,
       bankName: bank.name,
@@ -781,7 +854,9 @@ export async function seedOrg(): Promise<OrgResult> {
     benefitRows.push({
       employeeId: emp.id,
       isTransportUser: emp.level >= 5 || chance(30),
-      isTaxApplicable: emp.gross >= 30_000,
+      // Below roughly a third of the top band, nobody in the demo is
+      // over their country's threshold — scaled so this holds in every currency.
+      isTaxApplicable: emp.gross >= salary(30_000),
       advanceIncomeTax: chance(12),
       hasInvestment: emp.level >= 5 ? chance(70) : chance(25),
       hasProvidentFund: emp.employmentStatus === 'PERMANENT',
@@ -859,10 +934,7 @@ export async function seedOrg(): Promise<OrgResult> {
         employeeId: emp.id,
         effectiveFrom: point.effectiveFrom,
         gross: point.gross,
-        basic: round2(point.gross * 0.5),
-        houseRent: round2(point.gross * 0.3),
-        conveyance: round2(point.gross * 0.1),
-        medical: round2(point.gross * 0.1),
+        ...splitGross(point.gross),
         incrementAmount: previous === null ? null : round2(point.gross - previous),
         incrementPct: previous === null ? null : round2(((point.gross - previous) / previous) * 100),
         status: point.status,

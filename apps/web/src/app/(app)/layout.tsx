@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
 import { Sidebar } from '@/components/layout/sidebar';
+import { DemoBar } from '@/components/layout/demo-bar';
 import { Topbar } from '@/components/layout/topbar';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
@@ -120,6 +121,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {/* Renders nothing outside the published demo. */}
+        <DemoBar />
         <Topbar onOpenMobileNav={() => setMobileOpen(true)} />
         <main className="min-w-0 flex-1 px-3 py-4 sm:px-5 sm:py-6">
           <div className="mx-auto w-full max-w-[1600px] space-y-5">{children}</div>

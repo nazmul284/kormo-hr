@@ -676,11 +676,14 @@ export class EmployeesService {
         create: {
           employeeId, kind: 'PRESENT',
           buildingNo: parts[0] ?? null, streetNo: parts[1] ?? null,
-          village: parts[2] ?? null, city: parts[3] ?? 'Dhaka', country: 'Bangladesh',
+          // City and country are left to whatever the employee typed —
+          // guessing a default here would quietly relabel the address of
+          // anyone whose tenant is somewhere else.
+          village: parts[2] ?? null, city: parts[3] ?? null,
         },
         update: {
           buildingNo: parts[0] ?? null, streetNo: parts[1] ?? null,
-          village: parts[2] ?? null, city: parts[3] ?? 'Dhaka',
+          village: parts[2] ?? null, city: parts[3] ?? null,
         },
       });
       return;

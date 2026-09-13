@@ -211,6 +211,56 @@ Stated plainly rather than implied:
 - **Email/SMS delivery.** Password-reset tokens are generated and stored correctly; in
   development the token is logged rather than sent. A real transport belongs behind an
   outbound queue.
-- **Bengali localisation.** The UI is English throughout, with Bangladeshi conventions
-  (lakh/crore grouping, ৳, Fri–Sat weekend, July fiscal year) applied where they affect
-  correctness rather than only presentation.
+- **Translated interfaces.** The UI is English throughout. What *is* localised is
+  everything that affects correctness rather than presentation — currency and its
+  grouping, weekend days, holidays, tax rules, fiscal-year boundaries and identifier
+  formats — and that now lives in country packs rather than being assumed. See
+  [LOCALIZATION.md](LOCALIZATION.md). Translating the interface itself is a separate
+  piece of work and is not started.
+
+
+---
+
+## 4. Going country-agnostic
+
+The system was built Bangladesh-first, and that was the right call for the brief: the
+NBR tax module is the highest-value part of the product, and building it against a real
+jurisdiction is what produced an engine general enough to take slabs, exemptions, rebates
+and minimums as data.
+
+Opening the repository meant removing the assumption that there is only one jurisdiction.
+What that actually involved is worth recording, because it was much less than expected:
+
+**The tax engine did not change shape.** It was already pure and config-driven, so it
+needed exactly one addition — `nonTaxableFlat`, for the flat standard deduction most of
+the world uses instead of South Asia's capped proportional exemption. The engine does one
+or the other, never both.
+
+**The assumptions were in the edges, not the core.** A Friday–Saturday weekend hardcoded
+in leave arithmetic. `Asia/Dhaka` as a constant offset in three date helpers. `৳` and the
+lakh/crore grouping baked into the web formatter. `country: 'BD'` as a literal in the tax
+service's queries. A July fiscal year as a default argument. None of these were
+difficult; all of them were invisible until a second country existed to contradict them.
+
+**One constraint made the rest fall out.** *Nothing outside `locale/packs/` may branch on
+a country code.* Wherever that rule could not be followed, the pack was missing a field —
+so the fix was always to add the field rather than the branch. Six packs ship; adding a
+seventh is two files.
+
+**Two things are deliberately not inferred.** Marital filing status is never guessed from
+HR data — a married employee may file jointly, separately or as head of household, and
+guessing produces a confidently wrong tax figure. And a tenant's weekend is stored on the
+Company row rather than derived from its country, so a six-day operation does not have to
+fork a pack.
+
+**What this cost.** A migration (five new filing-status enum values, four Company
+columns, one nullable TaxConfig column), a tenant-context service so the timezone and
+weekend reach the services that need them, and a second demo-data layer so each country
+seeds with plausible names and addresses. The Bangladesh tests are unchanged and still
+pin the engine to the same worked example, to the taka.
+
+**What it bought.** A bug, immediately: the flat standard deduction was read from the
+database as `null` rather than `undefined`, which silently switched every flat-deduction
+country onto the proportional branch and exempted nothing. Every endpoint still returned
+200. That is now asserted on the response body, not just the status code — see
+`assert_json` in `scripts/api-smoke.sh`.

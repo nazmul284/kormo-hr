@@ -4,9 +4,9 @@ import { seedDemoGuarantees } from './demo-guarantees';
 import { seedField } from './field';
 import { seedLeave } from './leave';
 import { seedLifecycle } from './lifecycle';
-import { TODAY, iso, prisma, section } from './lib';
+import { PACK, TODAY, iso, prisma, section } from './lib';
 import { seedMoney } from './money';
-import { seedOrg } from './org';
+import { TENANT, seedOrg } from './org';
 import { seedWorkplace } from './workplace';
 
 /**
@@ -55,6 +55,14 @@ async function main() {
   console.log('\x1b[1m\x1b[35m  ╭───────────────────────────────────────────────╮\x1b[0m');
   console.log('\x1b[1m\x1b[35m  │\x1b[0m  \x1b[1mKormo HR\x1b[0m — demo data generator            \x1b[1m\x1b[35m│\x1b[0m');
   console.log(`\x1b[1m\x1b[35m  │\x1b[0m  \x1b[2mseed clock: ${iso(TODAY)}\x1b[0m                    \x1b[1m\x1b[35m│\x1b[0m`);
+  console.log(
+    `\x1b[1m\x1b[35m  │\x1b[0m  \x1b[2mcountry:    ${PACK.flag} ${PACK.name} (${PACK.currency.code})`.padEnd(66)
+    + '\x1b[0m\x1b[1m\x1b[35m│\x1b[0m',
+  );
+  console.log(
+    `\x1b[1m\x1b[35m  │\x1b[0m  \x1b[2mtenant:     ${TENANT.primary.name}`.padEnd(66)
+    + '\x1b[0m\x1b[1m\x1b[35m│\x1b[0m',
+  );
   console.log('\x1b[1m\x1b[35m  ╰───────────────────────────────────────────────╯\x1b[0m');
 
   await truncateAll();

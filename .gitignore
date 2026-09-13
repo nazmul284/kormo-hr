@@ -31,10 +31,13 @@ apps/api/prisma/*.db-journal
 apps/api/.env
 apps/web/.env.local
 
-# verification artefacts
+# verification artefacts — scratch output from `npm run verify:ui`.
+# The screenshots the README uses live in docs/screenshots/ and ARE committed.
 .screenshots/
 .screenshots-dark/
 .screenshots-mobile/
 
 # production build output (kept separate so it cannot clobber next dev)
 apps/web/.next-build/
+apps/web/.next-demo/
+apps/web/out/

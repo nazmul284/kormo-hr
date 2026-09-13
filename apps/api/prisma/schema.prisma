@@ -124,6 +124,10 @@ enum SalaryComponentCalc {
   FORMULA
 }
 
+/// Filing categories across every shipped country pack. A pack declares
+/// which of these it uses; `GENERAL` is the one every pack has. The first
+/// six are personal-status reliefs (the South Asian shape), the rest are
+/// filing statuses (the US shape).
 enum TaxpayerCategory {
   GENERAL
   FEMALE
@@ -131,6 +135,11 @@ enum TaxpayerCategory {
   DISABLED
   GAZETTED_FREEDOM_FIGHTER
   THIRD_GENDER
+  SINGLE
+  MARRIED_JOINT
+  MARRIED_SEPARATE
+  HEAD_OF_HOUSEHOLD
+  NON_RESIDENT
 }
 
 enum GoalStatus {
@@ -255,48 +264,60 @@ enum HelpdeskPriority {
 // ════════════════════════════════════════════════════════════════════════
 
 model Company {
-  id           Int      @id @default(autoincrement()) @map("company_id")
-  name         String
-  alias        String   @unique
-  legalName    String?  @map("legal_name")
-  logoPath     String?  @map("logo_path")
-  tin          String?
-  bin          String?
-  address      String?
-  contactEmail String?  @map("contact_email")
-  contactPhone String?  @map("contact_phone")
-  timezone     String   @default("Asia/Dhaka")
-  currency     String   @default("BDT")
-  fiscalYearStartMonth Int @default(7) @map("fiscal_year_start_month") // Bangladesh FY: July
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id                   Int      @id @default(autoincrement()) @map("company_id")
+  name                 String
+  alias                String   @unique
+  legalName            String?  @map("legal_name")
+  logoPath             String?  @map("logo_path")
+  tin                  String?
+  bin                  String?
+  address              String?
+  contactEmail         String?  @map("contact_email")
+  contactPhone         String?  @map("contact_phone")
+  /// Country pack driving currency, weekend, holidays, tax rules and
+  /// identifier formats. "INTL" is the country-neutral default; see
+  /// packages/shared/src/locale/packs.
+  country              String   @default("INTL")
+  timezone             String   @default("UTC")
+  currency             String   @default("USD")
+  /// BCP-47 tag for date and number rendering, e.g. "en-GB".
+  locale               String   @default("en-US")
+  /// Weekday numbers that are the weekend. 0 = Sunday … 6 = Saturday.
+  /// Stored per tenant rather than derived from `country` so a company
+  /// can run a six-day week without forking its country pack.
+  weekendDays          Int[]    @default([6, 0]) @map("weekend_days")
+  /// Month (1-12) the tax/fiscal year opens on. January in most of the
+  /// world, April in the UK and India, July in Bangladesh.
+  fiscalYearStartMonth Int      @default(1) @map("fiscal_year_start_month")
+  isActive             Boolean  @default(true) @map("is_active")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
-  locations         Location[]
-  departments       Department[]
-  designations      Designation[]
-  employees         Employee[]
-  shifts            Shift[]
-  rosters           AttendanceRoster[]
-  leaveTypes        LeaveType[]
-  leavePolicies     LeavePolicy[]
-  holidays          Holiday[]
-  salaryComponents  SalaryComponent[]
-  payrollRuns       PayrollRun[]
-  notices           Notice[]
-  policies          OfficePolicy[]
-  features          CompanyFeature[]
-  roles             Role[]
-  foodPrograms      FoodProgram[]
-  goalCycles        GoalCycle[]
-  customers         Customer[]
-  rooms             Room[]
-  onboardingTemplates OnboardingTemplate[]
+  locations            Location[]
+  departments          Department[]
+  designations         Designation[]
+  employees            Employee[]
+  shifts               Shift[]
+  rosters              AttendanceRoster[]
+  leaveTypes           LeaveType[]
+  leavePolicies        LeavePolicy[]
+  holidays             Holiday[]
+  salaryComponents     SalaryComponent[]
+  payrollRuns          PayrollRun[]
+  notices              Notice[]
+  policies             OfficePolicy[]
+  features             CompanyFeature[]
+  roles                Role[]
+  foodPrograms         FoodProgram[]
+  goalCycles           GoalCycle[]
+  customers            Customer[]
+  rooms                Room[]
+  onboardingTemplates  OnboardingTemplate[]
   clearanceDepartments ClearanceDepartment[]
-  accessGrants      EmployeeCompanyAccess[]
-  attendances       Attendance[]
-  reportJobs        ReportJob[]
-  helpdeskTickets   HelpdeskTicket[]
+  accessGrants         EmployeeCompanyAccess[]
+  attendances          Attendance[]
+  reportJobs           ReportJob[]
+  helpdeskTickets      HelpdeskTicket[]
 
   @@map("company")
 }
@@ -306,7 +327,7 @@ model Company {
 model CompanyFeature {
   id        Int      @id @default(autoincrement())
   companyId Int      @map("company_id")
-  key       String   // e.g. hasFoodProgramSubscription, hasOnboardingFlowAccess
+  key       String // e.g. hasFoodProgramSubscription, hasOnboardingFlowAccess
   enabled   Boolean  @default(false)
   config    Json?
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -318,18 +339,18 @@ model CompanyFeature {
 }
 
 model Location {
-  id         Int      @id @default(autoincrement()) @map("location_id")
-  companyId  Int      @map("company_id")
-  name       String
-  alias      String
-  address    String?
-  city       String?
-  lat        Float?
-  lng        Float?
+  id        Int      @id @default(autoincrement()) @map("location_id")
+  companyId Int      @map("company_id")
+  name      String
+  alias     String
+  address   String?
+  city      String?
+  lat       Float?
+  lng       Float?
   /// Radius in metres for geofenced attendance punches.
-  geofenceM  Int?     @map("geofence_m")
-  isActive   Boolean  @default(true) @map("is_active")
-  createdAt  DateTime @default(now()) @map("created_at")
+  geofenceM Int?     @map("geofence_m")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
 
   company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   employees   Employee[]
@@ -352,9 +373,9 @@ model Department {
   isActive           Boolean  @default(true) @map("is_active")
   createdAt          DateTime @default(now()) @map("created_at")
 
-  company    Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  parent     Department?  @relation("DeptTree", fields: [parentDepartmentId], references: [id], onDelete: SetNull)
-  children   Department[] @relation("DeptTree")
+  company    Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent     Department?           @relation("DeptTree", fields: [parentDepartmentId], references: [id], onDelete: SetNull)
+  children   Department[]          @relation("DeptTree")
   employees  Employee[]
   clearances ClearanceDepartment[]
 
@@ -364,18 +385,18 @@ model Department {
 }
 
 model Designation {
-  id        Int      @id @default(autoincrement()) @map("designation_id")
-  companyId Int      @map("company_id")
+  id        Int     @id @default(autoincrement()) @map("designation_id")
+  companyId Int     @map("company_id")
   name      String
   /// Pay grade label as printed on letters, e.g. "5b".
   grade     String?
   /// Numeric seniority rung, used for promotion validation & org charts.
-  level     Int      @default(0)
-  isActive  Boolean  @default(true) @map("is_active")
+  level     Int     @default(0)
+  isActive  Boolean @default(true) @map("is_active")
 
-  company           Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employees         Employee[]
-  promotionHistory  PromotionHistory[]
+  company          Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employees        Employee[]
+  promotionHistory PromotionHistory[]
 
   @@unique([companyId, name])
   @@map("designation")
@@ -469,14 +490,14 @@ model PasswordResetToken {
 // ════════════════════════════════════════════════════════════════════════
 
 model Employee {
-  id                BigInt  @id @default(autoincrement()) @map("employee_id")
+  id                 BigInt  @id @default(autoincrement()) @map("employee_id")
   /// Human-facing payroll ID printed on cards & letters, e.g. "272".
-  employeeVisibleId String  @unique @map("employee_visible_id")
-  uniqueTag         String? @unique @map("unique_tag")
-  username          String  @unique
-  passwordHash      String  @map("password_hash")
+  employeeVisibleId  String  @unique @map("employee_visible_id")
+  uniqueTag          String? @unique @map("unique_tag")
+  username           String  @unique
+  passwordHash       String  @map("password_hash")
   mustChangePassword Boolean @default(false) @map("must_change_password")
-  active            Boolean @default(true)
+  active             Boolean @default(true)
 
   // ── identity ──────────────────────────────────────────────────────
   firstName String  @map("first_name")
@@ -499,7 +520,7 @@ model Employee {
   /// Actual DOB, where it differs from the certificate.
   actualBirthDate   DateTime?      @map("actual_birth_date") @db.Date
   gender            Gender?
-  nationality       String?        @default("Bangladeshi")
+  nationality       String?
   countryOfBirth    String?        @map("country_of_birth")
   religion          String?
   maritalStatus     MaritalStatus? @map("marital_status")
@@ -515,16 +536,16 @@ model Employee {
   rfid             String? @unique
 
   // ── employment ────────────────────────────────────────────────────
-  employmentStatus    EmploymentStatus @default(PROBATION) @map("employment_status")
-  employmentType      EmploymentType   @default(STAFF) @map("employment_type")
-  payrollType         PayrollType      @default(SALARIED) @map("payroll_type")
-  joiningDate         DateTime         @map("joining_date") @db.Date
-  probationStartDate  DateTime?        @map("probation_start_date") @db.Date
-  confirmationDate    DateTime?        @map("confirmation_date") @db.Date
-  contractEndDate     DateTime?        @map("contract_end_date") @db.Date
+  employmentStatus   EmploymentStatus @default(PROBATION) @map("employment_status")
+  employmentType     EmploymentType   @default(STAFF) @map("employment_type")
+  payrollType        PayrollType      @default(SALARIED) @map("payroll_type")
+  joiningDate        DateTime         @map("joining_date") @db.Date
+  probationStartDate DateTime?        @map("probation_start_date") @db.Date
+  confirmationDate   DateTime?        @map("confirmation_date") @db.Date
+  contractEndDate    DateTime?        @map("contract_end_date") @db.Date
   /// Notice period the employee owes on resignation.
-  noticePeriodDays    Int              @default(30) @map("notice_period_days")
-  separationDate      DateTime?        @map("separation_date") @db.Date
+  noticePeriodDays   Int              @default(30) @map("notice_period_days")
+  separationDate     DateTime?        @map("separation_date") @db.Date
 
   // ── org placement ─────────────────────────────────────────────────
   companyId     Int  @map("company_id")
@@ -546,117 +567,117 @@ model Employee {
   isHeadOfDepartment Boolean @default(false) @map("is_head_of_department")
 
   // ── media & documents ─────────────────────────────────────────────
-  profilePicPath       String? @map("profile_pic_path")
-  thumbnailsPath01     String? @map("thumbnails_path_01")
-  thumbnailsPath02     String? @map("thumbnails_path_02")
-  cvPath               String? @map("cv_path")
-  nidPassPath          String? @map("nid_pass_path")
-  offerLetterPath      String? @map("offer_letter_path")
-  appointmentLetter    String? @map("appointment_letter")
-  aggrementLetterPath  String? @map("aggrement_letter_path")
-  clearanceLetterPath  String? @map("clearance_letter_path")
+  profilePicPath      String? @map("profile_pic_path")
+  thumbnailsPath01    String? @map("thumbnails_path_01")
+  thumbnailsPath02    String? @map("thumbnails_path_02")
+  cvPath              String? @map("cv_path")
+  nidPassPath         String? @map("nid_pass_path")
+  offerLetterPath     String? @map("offer_letter_path")
+  appointmentLetter   String? @map("appointment_letter")
+  aggrementLetterPath String? @map("aggrement_letter_path")
+  clearanceLetterPath String? @map("clearance_letter_path")
 
   // ── policy bindings ───────────────────────────────────────────────
-  attendanceRosterId  Int? @map("attendance_roaster_id")
-  leavePolicyId       Int? @map("leave_policy_id")
-  carryLeavePolicyId  Int? @map("carry_leave_policy_id")
+  attendanceRosterId Int? @map("attendance_roaster_id")
+  leavePolicyId      Int? @map("leave_policy_id")
+  carryLeavePolicyId Int? @map("carry_leave_policy_id")
 
   lastLoginAt DateTime? @map("last_login_at")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   // ── relations: org ────────────────────────────────────────────────
-  company     Company      @relation(fields: [companyId], references: [id])
-  location    Location?    @relation(fields: [locationId], references: [id], onDelete: SetNull)
-  department  Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  designation Designation? @relation(fields: [designationId], references: [id], onDelete: SetNull)
+  company     Company           @relation(fields: [companyId], references: [id])
+  location    Location?         @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  department  Department?       @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  designation Designation?      @relation(fields: [designationId], references: [id], onDelete: SetNull)
   roster      AttendanceRoster? @relation(fields: [attendanceRosterId], references: [id], onDelete: SetNull)
   leavePolicy LeavePolicy?      @relation("EmpLeavePolicy", fields: [leavePolicyId], references: [id], onDelete: SetNull)
 
   // ── relations: reporting lines (self, named) ───────────────────────
-  lineManager        Employee?  @relation("LineManager", fields: [lineManagerId], references: [id], onDelete: SetNull)
-  directReports      Employee[] @relation("LineManager")
-  dottedManager1     Employee?  @relation("DottedManager1", fields: [dottedManager1Id], references: [id], onDelete: SetNull)
-  dottedReports1     Employee[] @relation("DottedManager1")
-  dottedManager2     Employee?  @relation("DottedManager2", fields: [dottedManager2Id], references: [id], onDelete: SetNull)
-  dottedReports2     Employee[] @relation("DottedManager2")
-  teamLeader         Employee?  @relation("TeamLeader", fields: [teamLeaderId], references: [id], onDelete: SetNull)
-  teamMembers        Employee[] @relation("TeamLeader")
-  headOfDepartment   Employee?  @relation("HeadOfDepartment", fields: [headOfDepartmentId], references: [id], onDelete: SetNull)
-  departmentMembers  Employee[] @relation("HeadOfDepartment")
-  projectManager     Employee?  @relation("ProjectManager", fields: [projectManagerId], references: [id], onDelete: SetNull)
-  projectMembers     Employee[] @relation("ProjectManager")
-  referringEmployee  Employee?  @relation("ReferringEmployee", fields: [referringEmployeeId], references: [id], onDelete: SetNull)
-  referrals          Employee[] @relation("ReferringEmployee")
+  lineManager       Employee?  @relation("LineManager", fields: [lineManagerId], references: [id], onDelete: SetNull)
+  directReports     Employee[] @relation("LineManager")
+  dottedManager1    Employee?  @relation("DottedManager1", fields: [dottedManager1Id], references: [id], onDelete: SetNull)
+  dottedReports1    Employee[] @relation("DottedManager1")
+  dottedManager2    Employee?  @relation("DottedManager2", fields: [dottedManager2Id], references: [id], onDelete: SetNull)
+  dottedReports2    Employee[] @relation("DottedManager2")
+  teamLeader        Employee?  @relation("TeamLeader", fields: [teamLeaderId], references: [id], onDelete: SetNull)
+  teamMembers       Employee[] @relation("TeamLeader")
+  headOfDepartment  Employee?  @relation("HeadOfDepartment", fields: [headOfDepartmentId], references: [id], onDelete: SetNull)
+  departmentMembers Employee[] @relation("HeadOfDepartment")
+  projectManager    Employee?  @relation("ProjectManager", fields: [projectManagerId], references: [id], onDelete: SetNull)
+  projectMembers    Employee[] @relation("ProjectManager")
+  referringEmployee Employee?  @relation("ReferringEmployee", fields: [referringEmployeeId], references: [id], onDelete: SetNull)
+  referrals         Employee[] @relation("ReferringEmployee")
 
   // ── relations: owned detail ────────────────────────────────────────
-  roles              EmployeeRole[]
-  companyAccess      EmployeeCompanyAccess[]
-  refreshTokens      RefreshToken[]
-  passwordResets     PasswordResetToken[]
-  addresses          EmployeeAddress[]
-  emergencyContacts  EmployeeEmergency[]
-  nominees           EmployeeNominee[]
-  education          EmployeeEducation[]
-  experience         EmployeeExperience[]
-  documents          EmployeeDocument[]
-  bankAccounts       EmployeeBank[]
-  benefit            EmployeeBenefit?
-  salaryHistory      SalaryHistory[]
-  promotionHistory   PromotionHistory[]
-  changeRequests     ProfileChangeRequest[]  @relation("ChangeRequester")
-  changeReviews      ProfileChangeRequest[]  @relation("ChangeReviewer")
+  roles             EmployeeRole[]
+  companyAccess     EmployeeCompanyAccess[]
+  refreshTokens     RefreshToken[]
+  passwordResets    PasswordResetToken[]
+  addresses         EmployeeAddress[]
+  emergencyContacts EmployeeEmergency[]
+  nominees          EmployeeNominee[]
+  education         EmployeeEducation[]
+  experience        EmployeeExperience[]
+  documents         EmployeeDocument[]
+  bankAccounts      EmployeeBank[]
+  benefit           EmployeeBenefit?
+  salaryHistory     SalaryHistory[]
+  promotionHistory  PromotionHistory[]
+  changeRequests    ProfileChangeRequest[]  @relation("ChangeRequester")
+  changeReviews     ProfileChangeRequest[]  @relation("ChangeReviewer")
 
-  attendances        Attendance[]
-  rosterAssignments  RosterAssignment[]
-  attendanceEdits    AttendanceEditRequest[] @relation("AttEditRequester")
+  attendances             Attendance[]
+  rosterAssignments       RosterAssignment[]
+  attendanceEdits         AttendanceEditRequest[] @relation("AttEditRequester")
   attendanceEditApprovals AttendanceEditRequest[] @relation("AttEditApprover")
-  overtimeRequests   OvertimeRequest[]       @relation("OtRequester")
-  overtimeApprovals  OvertimeRequest[]       @relation("OtApprover")
-  compensationRequests CompensationRequest[] @relation("CompRequester")
-  compensationApprovals CompensationRequest[] @relation("CompApprover")
-  shiftExchangesRaised ShiftExchangeRequest[] @relation("SxRequester")
-  shiftExchangesTarget ShiftExchangeRequest[] @relation("SxCounterparty")
-  shiftExchangeApprovals ShiftExchangeRequest[] @relation("SxApprover")
+  overtimeRequests        OvertimeRequest[]       @relation("OtRequester")
+  overtimeApprovals       OvertimeRequest[]       @relation("OtApprover")
+  compensationRequests    CompensationRequest[]   @relation("CompRequester")
+  compensationApprovals   CompensationRequest[]   @relation("CompApprover")
+  shiftExchangesRaised    ShiftExchangeRequest[]  @relation("SxRequester")
+  shiftExchangesTarget    ShiftExchangeRequest[]  @relation("SxCounterparty")
+  shiftExchangeApprovals  ShiftExchangeRequest[]  @relation("SxApprover")
 
   leaveBalances      LeaveBalance[]
   leaveRequests      LeaveRequest[]      @relation("LeaveRequester")
   leaveApprovals     LeaveRequest[]      @relation("LeaveApprover")
   leaveCarryForwards LeaveCarryForward[]
 
-  payslips           Payslip[]
-  taxYears           EmployeeTaxYear[]
-  taxPayments        TaxPayment[]
+  payslips    Payslip[]
+  taxYears    EmployeeTaxYear[]
+  taxPayments TaxPayment[]
 
-  mealSubscriptions  MealSubscription[]
-  meals              Meal[]
+  mealSubscriptions MealSubscription[]
+  meals             Meal[]
 
-  goals              Goal[]              @relation("GoalOwner")
-  goalReviews        GoalReview[]         @relation("GoalReviewer")
-  confirmationReviews JobConfirmationReview[] @relation("ConfirmationSubject")
+  goals                    Goal[]                  @relation("GoalOwner")
+  goalReviews              GoalReview[]            @relation("GoalReviewer")
+  confirmationReviews      JobConfirmationReview[] @relation("ConfirmationSubject")
   confirmationReviewsGiven JobConfirmationReview[] @relation("ConfirmationReviewer")
 
-  customerVisits     CustomerVisit[]      @relation("VisitOwner")
-  jointVisits        CustomerVisitParticipant[]
-  trackingSessions   TrackingSession[]
-  trackingConfig     TrackingConfig?
+  customerVisits   CustomerVisit[]            @relation("VisitOwner")
+  jointVisits      CustomerVisitParticipant[]
+  trackingSessions TrackingSession[]
+  trackingConfig   TrackingConfig?
 
-  onboardingTasks    OnboardingTask[]     @relation("OnboardingSubject")
-  onboardingAssigned OnboardingTask[]     @relation("OnboardingAssignee")
+  onboardingTasks    OnboardingTask[] @relation("OnboardingSubject")
+  onboardingAssigned OnboardingTask[] @relation("OnboardingAssignee")
 
-  resignations       Resignation[]        @relation("ResignationEmployee")
+  resignations         Resignation[]         @relation("ResignationEmployee")
   resignationApprovals ResignationApproval[] @relation("ResignationApprover")
-  clearanceItems     ClearanceItem[]      @relation("ClearanceOwner")
+  clearanceItems       ClearanceItem[]       @relation("ClearanceOwner")
 
-  bookings           RoomBooking[]        @relation("BookingOrganiser")
-  bookingInvites     RoomBookingAttendee[]
+  bookings       RoomBooking[]         @relation("BookingOrganiser")
+  bookingInvites RoomBookingAttendee[]
 
-  notifications      Notification[]
-  helpdeskTickets    HelpdeskTicket[]     @relation("TicketRequester")
-  helpdeskAssigned   HelpdeskTicket[]     @relation("TicketAssignee")
-  auditLogs          AuditLog[]
-  reportJobs         ReportJob[]
-  noticesAuthored    Notice[]             @relation("NoticeAuthor")
+  notifications    Notification[]
+  helpdeskTickets  HelpdeskTicket[] @relation("TicketRequester")
+  helpdeskAssigned HelpdeskTicket[] @relation("TicketAssignee")
+  auditLogs        AuditLog[]
+  reportJobs       ReportJob[]
+  noticesAuthored  Notice[]         @relation("NoticeAuthor")
 
   @@index([companyId, active])
   @@index([lineManagerId])
@@ -676,7 +697,7 @@ model EmployeeAddress {
   city       String?
   state      String?
   postalCode String?     @map("postal_code")
-  country    String?     @default("Bangladesh")
+  country    String?
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
@@ -701,16 +722,16 @@ model EmployeeEmergency {
 }
 
 model EmployeeNominee {
-  id         Int      @id @default(autoincrement())
-  employeeId BigInt   @map("employee_id")
-  name       String
-  relation   String
+  id          Int       @id @default(autoincrement())
+  employeeId  BigInt    @map("employee_id")
+  name        String
+  relation    String
   /// Percentage share of gratuity / provident fund / insurance payout.
-  sharePct   Decimal  @default(100) @map("share_pct") @db.Decimal(5, 2)
-  nid        String?
-  phone      String?
+  sharePct    Decimal   @default(100) @map("share_pct") @db.Decimal(5, 2)
+  nid         String?
+  phone       String?
   dateOfBirth DateTime? @map("date_of_birth") @db.Date
-  address    String?
+  address     String?
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
@@ -719,14 +740,14 @@ model EmployeeNominee {
 }
 
 model EmployeeEducation {
-  id           Int     @id @default(autoincrement())
-  employeeId   BigInt  @map("employee_id")
-  degree       String
-  institute    String
-  major        String?
-  result       String?
-  passingYear  Int?    @map("passing_year")
-  isHighest    Boolean @default(false) @map("is_highest")
+  id          Int     @id @default(autoincrement())
+  employeeId  BigInt  @map("employee_id")
+  degree      String
+  institute   String
+  major       String?
+  result      String?
+  passingYear Int?    @map("passing_year")
+  isHighest   Boolean @default(false) @map("is_highest")
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
@@ -750,16 +771,16 @@ model EmployeeExperience {
 }
 
 model EmployeeDocument {
-  id         Int      @id @default(autoincrement())
-  employeeId BigInt   @map("employee_id")
+  id         Int       @id @default(autoincrement())
+  employeeId BigInt    @map("employee_id")
   /// cv | nid | passport | offer_letter | appointment_letter | agreement |
   /// clearance_letter | resignation_letter | certificate | other
   kind       String
   title      String
   path       String
-  mimeType   String?  @map("mime_type")
-  sizeBytes  Int?     @map("size_bytes")
-  uploadedAt DateTime @default(now()) @map("uploaded_at")
+  mimeType   String?   @map("mime_type")
+  sizeBytes  Int?      @map("size_bytes")
+  uploadedAt DateTime  @default(now()) @map("uploaded_at")
   expiresAt  DateTime? @map("expires_at") @db.Date
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
@@ -771,17 +792,17 @@ model EmployeeDocument {
 /// Self-service profile edits routed to HR. Which fields an employee may
 /// even attempt is driven by ProfileUpdateConfig.
 model ProfileChangeRequest {
-  id          Int                 @id @default(autoincrement())
-  employeeId  BigInt              @map("employee_id")
-  fieldPath   String              @map("field_path") // e.g. "personalEmail"
-  currentValue String?            @map("current_value")
-  requestedValue String           @map("requested_value")
-  reason      String?
-  status      ChangeRequestStatus @default(PENDING)
-  reviewerId  BigInt?             @map("reviewer_id")
-  reviewNote  String?             @map("review_note")
-  requestedAt DateTime            @default(now()) @map("requested_at")
-  reviewedAt  DateTime?           @map("reviewed_at")
+  id             Int                 @id @default(autoincrement())
+  employeeId     BigInt              @map("employee_id")
+  fieldPath      String              @map("field_path") // e.g. "personalEmail"
+  currentValue   String?             @map("current_value")
+  requestedValue String              @map("requested_value")
+  reason         String?
+  status         ChangeRequestStatus @default(PENDING)
+  reviewerId     BigInt?             @map("reviewer_id")
+  reviewNote     String?             @map("review_note")
+  requestedAt    DateTime            @default(now()) @map("requested_at")
+  reviewedAt     DateTime?           @map("reviewed_at")
 
   employee Employee  @relation("ChangeRequester", fields: [employeeId], references: [id], onDelete: Cascade)
   reviewer Employee? @relation("ChangeReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
@@ -830,21 +851,21 @@ model EmployeeBank {
 /// The benefit-eligibility matrix. Drives payroll components AND tax:
 /// isTaxApplicable / advanceIncomeTax / hasInvestment feed the tax engine.
 model EmployeeBenefit {
-  employeeId         BigInt  @id @map("employee_id")
-  isTransportUser    Boolean @default(false) @map("is_transport_user")
-  isTaxApplicable    Boolean @default(true)  @map("is_tax_applicable")
-  advanceIncomeTax   Boolean @default(false) @map("advance_income_tax")
-  hasInvestment      Boolean @default(false) @map("has_investment")
-  hasProvidentFund   Boolean @default(false) @map("has_provident_fund")
-  hasLfa             Boolean @default(false) @map("has_lfa")
-  hasGratuity        Boolean @default(false) @map("has_gratuity")
-  hasDormitory       Boolean @default(false) @map("has_dormitory")
-  hasBonus           Boolean @default(true)  @map("has_bonus")
-  hasLifeInsurance   Boolean @default(false) @map("has_life_insurance")
-  hasLunchAllowance  Boolean @default(false) @map("has_lunch_allowance")
-  hasMedicalInsurance Boolean @default(false) @map("has_medical_insurance")
-  hasMobileAllowance Boolean @default(false) @map("has_mobile_allowance")
-  updatedAt          DateTime @updatedAt @map("updated_at")
+  employeeId          BigInt   @id @map("employee_id")
+  isTransportUser     Boolean  @default(false) @map("is_transport_user")
+  isTaxApplicable     Boolean  @default(true) @map("is_tax_applicable")
+  advanceIncomeTax    Boolean  @default(false) @map("advance_income_tax")
+  hasInvestment       Boolean  @default(false) @map("has_investment")
+  hasProvidentFund    Boolean  @default(false) @map("has_provident_fund")
+  hasLfa              Boolean  @default(false) @map("has_lfa")
+  hasGratuity         Boolean  @default(false) @map("has_gratuity")
+  hasDormitory        Boolean  @default(false) @map("has_dormitory")
+  hasBonus            Boolean  @default(true) @map("has_bonus")
+  hasLifeInsurance    Boolean  @default(false) @map("has_life_insurance")
+  hasLunchAllowance   Boolean  @default(false) @map("has_lunch_allowance")
+  hasMedicalInsurance Boolean  @default(false) @map("has_medical_insurance")
+  hasMobileAllowance  Boolean  @default(false) @map("has_mobile_allowance")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
@@ -878,15 +899,15 @@ model SalaryHistory {
 }
 
 model PromotionHistory {
-  id            Int                @id @default(autoincrement())
-  employeeId    BigInt             @map("employee_id")
-  effectiveFrom DateTime           @map("effective_from") @db.Date
-  designationId Int?               @map("designation_id")
-  departmentId  Int?               @map("department_id")
-  companyId     Int?               @map("company_id")
-  fromDesignation String?          @map("from_designation")
-  status        SalaryChangeStatus @default(PROMOTION)
-  remarks       String?
+  id              Int                @id @default(autoincrement())
+  employeeId      BigInt             @map("employee_id")
+  effectiveFrom   DateTime           @map("effective_from") @db.Date
+  designationId   Int?               @map("designation_id")
+  departmentId    Int?               @map("department_id")
+  companyId       Int?               @map("company_id")
+  fromDesignation String?            @map("from_designation")
+  status          SalaryChangeStatus @default(PROMOTION)
+  remarks         String?
 
   employee    Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   designation Designation? @relation(fields: [designationId], references: [id], onDelete: SetNull)
@@ -896,7 +917,9 @@ model PromotionHistory {
 }
 
 /// Company-configurable earning/deduction structure.
-/// Bangladesh default: Basic 50% | House Rent 30% | Conveyance 10% | Medical 10%.
+/// Defaults come from the tenant's country pack — Bangladesh splits gross
+/// into Basic 50% | House Rent 30% | Conveyance 10% | Medical 10%, while the
+/// US and UK use a single 100% base-salary head.
 model SalaryComponent {
   id        Int                 @id @default(autoincrement())
   companyId Int                 @map("company_id")
@@ -920,22 +943,22 @@ model SalaryComponent {
 // ════════════════════════════════════════════════════════════════════════
 
 model Shift {
-  id            Int     @id @default(autoincrement()) @map("shift_id")
-  companyId     Int     @map("company_id")
-  name          String
+  id             Int     @id @default(autoincrement()) @map("shift_id")
+  companyId      Int     @map("company_id")
+  name           String
   /// Stored as HH:mm so overnight shifts are expressible without a date.
-  startTime     String  @map("start_time")
-  endTime       String  @map("end_time")
-  graceMinutes  Int     @default(15) @map("grace_minutes")
-  breakMinutes  Int     @default(60) @map("break_minutes")
-  isNightShift  Boolean @default(false) @map("is_night_shift")
+  startTime      String  @map("start_time")
+  endTime        String  @map("end_time")
+  graceMinutes   Int     @default(15) @map("grace_minutes")
+  breakMinutes   Int     @default(60) @map("break_minutes")
+  isNightShift   Boolean @default(false) @map("is_night_shift")
   /// Minimum minutes on the clock to count as a full day.
-  fullDayMinutes Int    @default(480) @map("full_day_minutes")
-  halfDayMinutes Int    @default(240) @map("half_day_minutes")
-  colorHex      String? @map("color_hex")
-  isActive      Boolean @default(true) @map("is_active")
+  fullDayMinutes Int     @default(480) @map("full_day_minutes")
+  halfDayMinutes Int     @default(240) @map("half_day_minutes")
+  colorHex       String? @map("color_hex")
+  isActive       Boolean @default(true) @map("is_active")
 
-  company           Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company           Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
   rosterAssignments RosterAssignment[]
   exchangesFrom     ShiftExchangeRequest[] @relation("SxFromShift")
   exchangesTo       ShiftExchangeRequest[] @relation("SxToShift")
@@ -945,12 +968,12 @@ model Shift {
 }
 
 model AttendanceRoster {
-  id        Int     @id @default(autoincrement()) @map("roster_id")
-  companyId Int     @map("company_id")
-  name      String
+  id              Int     @id @default(autoincrement()) @map("roster_id")
+  companyId       Int     @map("company_id")
+  name            String
   /// Repeating pattern, e.g. { "weekends": [5,6], "cycle": ["GEN",...] }.
-  rotationPattern Json? @map("rotation_pattern")
-  isActive  Boolean @default(true) @map("is_active")
+  rotationPattern Json?   @map("rotation_pattern")
+  isActive        Boolean @default(true) @map("is_active")
 
   company     Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   employees   Employee[]
@@ -961,19 +984,19 @@ model AttendanceRoster {
 }
 
 model RosterAssignment {
-  id         BigInt   @id @default(autoincrement())
-  employeeId BigInt   @map("employee_id")
-  rosterId   Int?     @map("roster_id")
-  date       DateTime @db.Date
-  shiftId    Int?     @map("shift_id")
-  isWeekend  Boolean  @default(false) @map("is_weekend")
+  id                   BigInt   @id @default(autoincrement())
+  employeeId           BigInt   @map("employee_id")
+  rosterId             Int?     @map("roster_id")
+  date                 DateTime @db.Date
+  shiftId              Int?     @map("shift_id")
+  isWeekend            Boolean  @default(false) @map("is_weekend")
   /// A weekend granted only if the employee met a condition (e.g. full
   /// attendance that week); otherwise treated as a working day.
-  isConditionalWeekend Boolean @default(false) @map("is_conditional_weekend")
+  isConditionalWeekend Boolean  @default(false) @map("is_conditional_weekend")
 
-  employee Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   roster   AttendanceRoster? @relation(fields: [rosterId], references: [id], onDelete: SetNull)
-  shift    Shift?           @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  shift    Shift?            @relation(fields: [shiftId], references: [id], onDelete: SetNull)
 
   @@unique([employeeId, date])
   @@index([date])
@@ -984,47 +1007,47 @@ model RosterAssignment {
 /// declaratively partitioned BY RANGE(date) — see
 /// prisma/sql/001_partition_attendance.sql.
 model Attendance {
-  id                BigInt           @id @default(autoincrement())
-  employeeId        BigInt           @map("employee_id")
-  employeeVisibleId String           @map("employee_visible_id")
-  companyId         Int              @map("company_id")
-  locationId        Int?             @map("location_id")
-  date              DateTime         @db.Date
+  id                BigInt   @id @default(autoincrement())
+  employeeId        BigInt   @map("employee_id")
+  employeeVisibleId String   @map("employee_visible_id")
+  companyId         Int      @map("company_id")
+  locationId        Int?     @map("location_id")
+  date              DateTime @db.Date
 
-  inTime            DateTime?        @map("in_time")
-  outTime           DateTime?        @map("out_time")
-  status            AttendanceStatus
+  inTime  DateTime?        @map("in_time")
+  outTime DateTime?        @map("out_time")
+  status  AttendanceStatus
 
   /// Minutes late against the shift start + grace.
-  lateTimeMinutes      Int  @default(0) @map("late_time_minutes")
-  breakTimeMinutes     Int  @default(0) @map("break_time_minutes")
-  totalWorkMinutes     Int  @default(0) @map("total_work_minutes")
-  otTimeInSeconds      Int  @default(0) @map("ot_time_in_seconds")
-  extraOtTimeInSeconds Int  @default(0) @map("extra_ot_time_in_seconds")
+  lateTimeMinutes      Int @default(0) @map("late_time_minutes")
+  breakTimeMinutes     Int @default(0) @map("break_time_minutes")
+  totalWorkMinutes     Int @default(0) @map("total_work_minutes")
+  otTimeInSeconds      Int @default(0) @map("ot_time_in_seconds")
+  extraOtTimeInSeconds Int @default(0) @map("extra_ot_time_in_seconds")
 
   /// Denormalised shift snapshot — the roster may be re-cut later, but a
   /// past attendance row must keep the shift it was actually judged against.
-  attendanceRosterShiftName    String? @map("attendance_roster_shift_name")
-  attendanceRosterStartTime    String? @map("attendance_roaster_start_time")
-  attendanceRosterEndTime      String? @map("attendance_roaster_end_time")
-  attendanceRosterLateTime     String? @map("attendance_roaster_late_time")
+  attendanceRosterShiftName String? @map("attendance_roster_shift_name")
+  attendanceRosterStartTime String? @map("attendance_roaster_start_time")
+  attendanceRosterEndTime   String? @map("attendance_roaster_end_time")
+  attendanceRosterLateTime  String? @map("attendance_roaster_late_time")
 
   // ── inline edit-request sub-state (mirrors the reference system) ────
-  isEdited          Boolean   @default(false) @map("is_edited")
-  isInTimeEdited    Boolean   @default(false) @map("is_in_time_edited")
-  isOutTimeEdited   Boolean   @default(false) @map("is_out_time_edited")
-  updatedInTime     DateTime? @map("updated_in_time")
-  updatedOutTime    DateTime? @map("updated_out_time")
-  updatedStatus     AttendanceStatus? @map("updated_status")
-  sendEditRequest   Boolean   @default(false) @map("send_edit_request")
-  editReason        String?   @map("edit_reason")
-  isAcceptedByLm    Boolean   @default(false) @map("is_accepted_by_lm")
-  isRejectedByLm    Boolean   @default(false) @map("is_rejected_by_lm")
-  sendingDate       DateTime? @map("sending_date")
-  acceptedDate      DateTime? @map("accepted_date")
-  rejectedDate      DateTime? @map("rejected_date")
-  actionOverridenByAdmin Boolean @default(false) @map("action_overriden_by_admin")
-  allowedForOverridingRequestAction Boolean @default(true) @map("allowed_for_overriding_request_action")
+  isEdited                          Boolean           @default(false) @map("is_edited")
+  isInTimeEdited                    Boolean           @default(false) @map("is_in_time_edited")
+  isOutTimeEdited                   Boolean           @default(false) @map("is_out_time_edited")
+  updatedInTime                     DateTime?         @map("updated_in_time")
+  updatedOutTime                    DateTime?         @map("updated_out_time")
+  updatedStatus                     AttendanceStatus? @map("updated_status")
+  sendEditRequest                   Boolean           @default(false) @map("send_edit_request")
+  editReason                        String?           @map("edit_reason")
+  isAcceptedByLm                    Boolean           @default(false) @map("is_accepted_by_lm")
+  isRejectedByLm                    Boolean           @default(false) @map("is_rejected_by_lm")
+  sendingDate                       DateTime?         @map("sending_date")
+  acceptedDate                      DateTime?         @map("accepted_date")
+  rejectedDate                      DateTime?         @map("rejected_date")
+  actionOverridenByAdmin            Boolean           @default(false) @map("action_overriden_by_admin")
+  allowedForOverridingRequestAction Boolean           @default(true) @map("allowed_for_overriding_request_action")
 
   /// True when the day worked entitles the employee to a compensatory day off.
   compensationLeaveApplicable Boolean @default(false) @map("compensation_leave_applicable")
@@ -1033,10 +1056,10 @@ model Attendance {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  employee   Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  location   Location?  @relation(fields: [locationId], references: [id], onDelete: SetNull)
-  breaks     BreakTime[]
+  employee     Employee                @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  company      Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  location     Location?               @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  breaks       BreakTime[]
   editRequests AttendanceEditRequest[]
 
   @@unique([employeeId, date])
@@ -1059,19 +1082,19 @@ model BreakTime {
 }
 
 model AttendanceEditRequest {
-  id            BigInt        @id @default(autoincrement())
-  attendanceId  BigInt        @map("attendance_id")
-  employeeId    BigInt        @map("employee_id")
-  requestedInTime  DateTime?  @map("requested_in_time")
-  requestedOutTime DateTime?  @map("requested_out_time")
-  requestedStatus  AttendanceStatus? @map("requested_status")
-  reason        String
-  status        RequestStatus @default(PENDING)
-  approverId    BigInt?       @map("approver_id")
-  decisionNote  String?       @map("decision_note")
-  overriddenByAdmin Boolean   @default(false) @map("overridden_by_admin")
-  createdAt     DateTime      @default(now()) @map("created_at")
-  decidedAt     DateTime?     @map("decided_at")
+  id                BigInt            @id @default(autoincrement())
+  attendanceId      BigInt            @map("attendance_id")
+  employeeId        BigInt            @map("employee_id")
+  requestedInTime   DateTime?         @map("requested_in_time")
+  requestedOutTime  DateTime?         @map("requested_out_time")
+  requestedStatus   AttendanceStatus? @map("requested_status")
+  reason            String
+  status            RequestStatus     @default(PENDING)
+  approverId        BigInt?           @map("approver_id")
+  decisionNote      String?           @map("decision_note")
+  overriddenByAdmin Boolean           @default(false) @map("overridden_by_admin")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  decidedAt         DateTime?         @map("decided_at")
 
   attendance Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
   employee   Employee   @relation("AttEditRequester", fields: [employeeId], references: [id], onDelete: Cascade)
@@ -1108,21 +1131,21 @@ model OvertimeRequest {
 
 /// "I worked a weekend/holiday — grant me a compensatory day off."
 model CompensationRequest {
-  id           BigInt        @id @default(autoincrement())
-  employeeId   BigInt        @map("employee_id")
+  id               BigInt        @id @default(autoincrement())
+  employeeId       BigInt        @map("employee_id")
   /// The weekend/holiday actually worked.
-  workedDate   DateTime      @map("worked_date") @db.Date
+  workedDate       DateTime      @map("worked_date") @db.Date
   /// The day off being claimed (may be decided later).
-  requestedOffDate DateTime? @map("requested_off_date") @db.Date
-  days         Decimal       @default(1) @db.Decimal(4, 2)
-  reason       String
-  status       RequestStatus @default(PENDING)
-  approverId   BigInt?       @map("approver_id")
-  decisionNote String?       @map("decision_note")
-  expiresAt    DateTime?     @map("expires_at") @db.Date
-  consumedAt   DateTime?     @map("consumed_at")
-  createdAt    DateTime      @default(now()) @map("created_at")
-  decidedAt    DateTime?     @map("decided_at")
+  requestedOffDate DateTime?     @map("requested_off_date") @db.Date
+  days             Decimal       @default(1) @db.Decimal(4, 2)
+  reason           String
+  status           RequestStatus @default(PENDING)
+  approverId       BigInt?       @map("approver_id")
+  decisionNote     String?       @map("decision_note")
+  expiresAt        DateTime?     @map("expires_at") @db.Date
+  consumedAt       DateTime?     @map("consumed_at")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  decidedAt        DateTime?     @map("decided_at")
 
   employee Employee  @relation("CompRequester", fields: [employeeId], references: [id], onDelete: Cascade)
   approver Employee? @relation("CompApprover", fields: [approverId], references: [id], onDelete: SetNull)
@@ -1133,21 +1156,21 @@ model CompensationRequest {
 }
 
 model ShiftExchangeRequest {
-  id             BigInt        @id @default(autoincrement())
-  requesterId    BigInt        @map("requester_id")
-  counterpartyId BigInt        @map("counterparty_id")
-  date           DateTime      @db.Date
-  counterpartyDate DateTime    @map("counterparty_date") @db.Date
-  fromShiftId    Int?          @map("from_shift_id")
-  toShiftId      Int?          @map("to_shift_id")
-  reason         String
-  status         RequestStatus @default(PENDING)
+  id                   BigInt        @id @default(autoincrement())
+  requesterId          BigInt        @map("requester_id")
+  counterpartyId       BigInt        @map("counterparty_id")
+  date                 DateTime      @db.Date
+  counterpartyDate     DateTime      @map("counterparty_date") @db.Date
+  fromShiftId          Int?          @map("from_shift_id")
+  toShiftId            Int?          @map("to_shift_id")
+  reason               String
+  status               RequestStatus @default(PENDING)
   /// The counterparty must agree before the manager can approve.
-  counterpartyAccepted Boolean @default(false) @map("counterparty_accepted")
-  approverId     BigInt?       @map("approver_id")
-  decisionNote   String?       @map("decision_note")
-  createdAt      DateTime      @default(now()) @map("created_at")
-  decidedAt      DateTime?     @map("decided_at")
+  counterpartyAccepted Boolean       @default(false) @map("counterparty_accepted")
+  approverId           BigInt?       @map("approver_id")
+  decisionNote         String?       @map("decision_note")
+  createdAt            DateTime      @default(now()) @map("created_at")
+  decidedAt            DateTime?     @map("decided_at")
 
   requester    Employee  @relation("SxRequester", fields: [requesterId], references: [id], onDelete: Cascade)
   counterparty Employee  @relation("SxCounterparty", fields: [counterpartyId], references: [id], onDelete: Cascade)
@@ -1167,7 +1190,7 @@ model ShiftExchangeRequest {
 model LeaveType {
   id                 Int               @id @default(autoincrement())
   companyId          Int               @map("company_id")
-  key                String            // casual | sick | maternity | paternity | annual | comp_off | lwp
+  key                String // casual | sick | maternity | paternity | annual | comp_off | lwp
   label              String
   colorHex           String            @map("color_hex")
   defaultCount       Decimal           @default(0) @map("default_count") @db.Decimal(6, 2)
@@ -1198,13 +1221,13 @@ model LeaveType {
 }
 
 model LeavePolicy {
-  id            Int      @id @default(autoincrement())
-  companyId     Int      @map("company_id")
+  id            Int     @id @default(autoincrement())
+  companyId     Int     @map("company_id")
   name          String
-  effectiveYear Int      @map("effective_year")
+  effectiveYear Int     @map("effective_year")
   description   String?
-  isDefault     Boolean  @default(false) @map("is_default")
-  isActive      Boolean  @default(true) @map("is_active")
+  isDefault     Boolean @default(false) @map("is_default")
+  isActive      Boolean @default(true) @map("is_active")
 
   company   Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
   lines     LeavePolicyLine[]
@@ -1215,10 +1238,10 @@ model LeavePolicy {
 }
 
 model LeavePolicyLine {
-  id             Int     @id @default(autoincrement())
-  leavePolicyId  Int     @map("leave_policy_id")
-  leaveTypeId    Int     @map("leave_type_id")
-  entitledCount  Decimal @map("entitled_count") @db.Decimal(6, 2)
+  id            Int     @id @default(autoincrement())
+  leavePolicyId Int     @map("leave_policy_id")
+  leaveTypeId   Int     @map("leave_type_id")
+  entitledCount Decimal @map("entitled_count") @db.Decimal(6, 2)
 
   policy    LeavePolicy @relation(fields: [leavePolicyId], references: [id], onDelete: Cascade)
   leaveType LeaveType   @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
@@ -1229,17 +1252,17 @@ model LeavePolicyLine {
 
 /// Per-employee, per-type, per-year ledger. Fractional by design.
 model LeaveBalance {
-  id                  Int     @id @default(autoincrement())
-  employeeId          BigInt  @map("employee_id")
-  leaveTypeId         Int     @map("leave_type_id")
+  id                  Int      @id @default(autoincrement())
+  employeeId          BigInt   @map("employee_id")
+  leaveTypeId         Int      @map("leave_type_id")
   year                Int
   /// Entitlement for the year (after pro-rating).
-  actualLeaveCount    Decimal @map("actual_leave_count") @db.Decimal(6, 2)
-  remainingLeaveCount Decimal @map("remaining_leave_count") @db.Decimal(6, 2)
-  consumedCount       Decimal @default(0) @map("consumed_count") @db.Decimal(6, 2)
+  actualLeaveCount    Decimal  @map("actual_leave_count") @db.Decimal(6, 2)
+  remainingLeaveCount Decimal  @map("remaining_leave_count") @db.Decimal(6, 2)
+  consumedCount       Decimal  @default(0) @map("consumed_count") @db.Decimal(6, 2)
   /// Days pending approval — held so an employee cannot overdraw.
-  pendingCount        Decimal @default(0) @map("pending_count") @db.Decimal(6, 2)
-  carriedForward      Decimal @default(0) @map("carried_forward") @db.Decimal(6, 2)
+  pendingCount        Decimal  @default(0) @map("pending_count") @db.Decimal(6, 2)
+  carriedForward      Decimal  @default(0) @map("carried_forward") @db.Decimal(6, 2)
   updatedAt           DateTime @updatedAt @map("updated_at")
 
   employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
@@ -1251,28 +1274,28 @@ model LeaveBalance {
 }
 
 model LeaveRequest {
-  id           BigInt        @id @default(autoincrement())
-  employeeId   BigInt        @map("employee_id")
-  leaveTypeId  Int           @map("leave_type_id")
-  startDate    DateTime      @map("start_date") @db.Date
-  endDate      DateTime      @map("end_date") @db.Date
+  id               BigInt        @id @default(autoincrement())
+  employeeId       BigInt        @map("employee_id")
+  leaveTypeId      Int           @map("leave_type_id")
+  startDate        DateTime      @map("start_date") @db.Date
+  endDate          DateTime      @map("end_date") @db.Date
   /// Chargeable days (calendar days minus weekends/holidays, halves allowed).
-  leaveDays    Decimal       @map("leave_days") @db.Decimal(5, 2)
+  leaveDays        Decimal       @map("leave_days") @db.Decimal(5, 2)
   /// Raw span, inclusive.
-  calendarDays Int           @map("calendar_days")
-  dayPart      LeaveDayPart  @default(FULL_DAY) @map("day_part")
-  isHalfDay    Boolean       @default(false) @map("is_half_day")
-  reason       String        @db.VarChar(255)
-  appliedDate  DateTime      @default(now()) @map("applied_date")
-  status       RequestStatus @default(PENDING)
-  approverId   BigInt?       @map("approver_id")
-  approvedAt   DateTime?     @map("approved_at")
-  decisionNote String?       @map("decision_note")
-  documentPath String?       @map("document_path")
+  calendarDays     Int           @map("calendar_days")
+  dayPart          LeaveDayPart  @default(FULL_DAY) @map("day_part")
+  isHalfDay        Boolean       @default(false) @map("is_half_day")
+  reason           String        @db.VarChar(255)
+  appliedDate      DateTime      @default(now()) @map("applied_date")
+  status           RequestStatus @default(PENDING)
+  approverId       BigInt?       @map("approver_id")
+  approvedAt       DateTime?     @map("approved_at")
+  decisionNote     String?       @map("decision_note")
+  documentPath     String?       @map("document_path")
   /// Address/phone while away, for statutory long leave.
-  contactWhileAway String?   @map("contact_while_away")
-  handoverToId BigInt?       @map("handover_to_id")
-  cancelledAt  DateTime?     @map("cancelled_at")
+  contactWhileAway String?       @map("contact_while_away")
+  handoverToId     BigInt?       @map("handover_to_id")
+  cancelledAt      DateTime?     @map("cancelled_at")
 
   employee  Employee  @relation("LeaveRequester", fields: [employeeId], references: [id], onDelete: Cascade)
   leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
@@ -1285,17 +1308,17 @@ model LeaveRequest {
 }
 
 model LeaveCarryForward {
-  id          Int      @id @default(autoincrement())
-  employeeId  BigInt   @map("employee_id")
-  leaveTypeId Int      @map("leave_type_id")
-  fromYear    Int      @map("from_year")
-  toYear      Int      @map("to_year")
+  id           Int       @id @default(autoincrement())
+  employeeId   BigInt    @map("employee_id")
+  leaveTypeId  Int       @map("leave_type_id")
+  fromYear     Int       @map("from_year")
+  toYear       Int       @map("to_year")
   /// What was left over before the cap was applied.
-  eligibleDays Decimal @map("eligible_days") @db.Decimal(6, 2)
-  carriedDays  Decimal @map("carried_days") @db.Decimal(6, 2)
-  lapsedDays   Decimal @map("lapsed_days") @db.Decimal(6, 2)
+  eligibleDays Decimal   @map("eligible_days") @db.Decimal(6, 2)
+  carriedDays  Decimal   @map("carried_days") @db.Decimal(6, 2)
+  lapsedDays   Decimal   @map("lapsed_days") @db.Decimal(6, 2)
   expiresAt    DateTime? @map("expires_at") @db.Date
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
 
   employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   leaveType LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
@@ -1336,20 +1359,20 @@ model Holiday {
 // ════════════════════════════════════════════════════════════════════════
 
 model PayrollRun {
-  id          Int              @id @default(autoincrement())
-  companyId   Int              @map("company_id")
-  month       Int
-  year        Int
-  status      PayrollRunStatus @default(DRAFT)
-  salaryDate  DateTime?        @map("salary_date") @db.Date
-  headcount   Int              @default(0)
-  totalGross  Decimal          @default(0) @map("total_gross") @db.Decimal(16, 2)
-  totalNet    Decimal          @default(0) @map("total_net") @db.Decimal(16, 2)
-  totalTax    Decimal          @default(0) @map("total_tax") @db.Decimal(16, 2)
-  notes       String?
-  lockedAt    DateTime?        @map("locked_at")
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
+  id         Int              @id @default(autoincrement())
+  companyId  Int              @map("company_id")
+  month      Int
+  year       Int
+  status     PayrollRunStatus @default(DRAFT)
+  salaryDate DateTime?        @map("salary_date") @db.Date
+  headcount  Int              @default(0)
+  totalGross Decimal          @default(0) @map("total_gross") @db.Decimal(16, 2)
+  totalNet   Decimal          @default(0) @map("total_net") @db.Decimal(16, 2)
+  totalTax   Decimal          @default(0) @map("total_tax") @db.Decimal(16, 2)
+  notes      String?
+  lockedAt   DateTime?        @map("locked_at")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
 
   company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   payslips Payslip[]
@@ -1367,14 +1390,14 @@ model Payslip {
   salaryDate   DateTime @map("salary_date") @db.Date
 
   // ── earnings (column abbreviations as printed in the payslip grid) ──
-  gross                     Decimal @db.Decimal(14, 2) // GS
-  basicAllowance            Decimal @map("basic_allowance") @db.Decimal(14, 2) // BA
+  gross                      Decimal @db.Decimal(14, 2) // GS
+  basicAllowance             Decimal @map("basic_allowance") @db.Decimal(14, 2) // BA
   conveyanceAllowanceMedical Decimal @map("conveyance_allowance_medical") @db.Decimal(14, 2) // CAM
-  transportAllowance        Decimal @default(0) @map("transport_allowance") @db.Decimal(14, 2) // TA
-  mobileBill                Decimal @default(0) @map("mobile_bill") @db.Decimal(14, 2) // MB
-  overtimeAmount            Decimal @default(0) @map("overtime_amount") @db.Decimal(14, 2)
-  bonusAmount               Decimal @default(0) @map("bonus_amount") @db.Decimal(14, 2)
-  otherEarnings             Decimal @default(0) @map("other_earnings") @db.Decimal(14, 2)
+  transportAllowance         Decimal @default(0) @map("transport_allowance") @db.Decimal(14, 2) // TA
+  mobileBill                 Decimal @default(0) @map("mobile_bill") @db.Decimal(14, 2) // MB
+  overtimeAmount             Decimal @default(0) @map("overtime_amount") @db.Decimal(14, 2)
+  bonusAmount                Decimal @default(0) @map("bonus_amount") @db.Decimal(14, 2)
+  otherEarnings              Decimal @default(0) @map("other_earnings") @db.Decimal(14, 2)
 
   // ── deductions ─────────────────────────────────────────────────────
   tax                 Decimal @default(0) @db.Decimal(14, 2) // Tax
@@ -1383,11 +1406,11 @@ model Payslip {
   loanDeduction       Decimal @default(0) @map("loan_deduction") @db.Decimal(14, 2)
   otherDeductions     Decimal @default(0) @map("other_deductions") @db.Decimal(14, 2)
 
-  netPayable   Decimal @map("net_payable") @db.Decimal(14, 2)
+  netPayable  Decimal  @map("net_payable") @db.Decimal(14, 2)
   /// Absence/LWP arithmetic behind DFA, plus the full component ledger.
-  breakdown    Json?
-  payslipPath  String? @map("payslip_path")
-  createdAt    DateTime @default(now()) @map("created_at")
+  breakdown   Json?
+  payslipPath String?  @map("payslip_path")
+  createdAt   DateTime @default(now()) @map("created_at")
 
   run      PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
   employee Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
@@ -1398,33 +1421,37 @@ model Payslip {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-//  TAX  (Bangladesh NBR engine — versioned & date-effective)
+//  TAX  (country-agnostic engine — versioned & date-effective; slabs,
+//        exemptions and rebates all arrive from a country pack)
 // ════════════════════════════════════════════════════════════════════════
 
 /// One row per (country, fiscal year, taxpayer category). Slabs and the
 /// exemption arithmetic change every budget, so nothing here is hardcoded
 /// in application code.
 model TaxConfig {
-  id        Int              @id @default(autoincrement())
-  country   String           @default("BD")
+  id         Int              @id @default(autoincrement())
+  country    String           @default("INTL")
   /// Label form "2026-27".
-  fiscalYear String          @map("fiscal_year")
-  category  TaxpayerCategory @default(GENERAL)
+  fiscalYear String           @map("fiscal_year")
+  category   TaxpayerCategory @default(GENERAL)
 
   /// Non-taxable allowance = min(totalEarning / divisor, cap).
-  nonTaxableDivisor      Decimal @default(3) @map("non_taxable_divisor") @db.Decimal(8, 4)
-  nonTaxableCap          Decimal @map("non_taxable_cap") @db.Decimal(14, 2)
+  nonTaxableDivisor      Decimal   @default(3) @map("non_taxable_divisor") @db.Decimal(8, 4)
+  nonTaxableCap          Decimal   @map("non_taxable_cap") @db.Decimal(14, 2)
   /// Allowable investment = pct × taxable income.
-  investmentAllowancePct Decimal @default(20) @map("investment_allowance_pct") @db.Decimal(6, 3)
+  investmentAllowancePct Decimal   @default(20) @map("investment_allowance_pct") @db.Decimal(6, 3)
   /// Rebate = pct × allowable investment.
-  rebatePct              Decimal @default(10) @map("rebate_pct") @db.Decimal(6, 3)
-  /// Floor payable by anyone with taxable income (NBR minimum tax).
-  minimumTax             Decimal @default(0) @map("minimum_tax") @db.Decimal(14, 2)
+  rebatePct              Decimal   @default(10) @map("rebate_pct") @db.Decimal(6, 3)
+  /// Flat standard deduction. When set it replaces the divisor/cap
+  /// calculation entirely — a country does one shape or the other.
+  nonTaxableFlat         Decimal?  @map("non_taxable_flat") @db.Decimal(14, 2)
+  /// Floor payable by anyone with taxable income (e.g. NBR minimum tax).
+  minimumTax             Decimal   @default(0) @map("minimum_tax") @db.Decimal(14, 2)
   /// Surcharge thresholds on net wealth, if applicable.
-  surchargeRules         Json?   @map("surcharge_rules")
-  effectiveFrom          DateTime @map("effective_from") @db.Date
+  surchargeRules         Json?     @map("surcharge_rules")
+  effectiveFrom          DateTime  @map("effective_from") @db.Date
   effectiveTo            DateTime? @map("effective_to") @db.Date
-  isActive               Boolean  @default(true) @map("is_active")
+  isActive               Boolean   @default(true) @map("is_active")
   notes                  String?
 
   slabs TaxSlab[]
@@ -1452,28 +1479,28 @@ model TaxSlab {
 /// Materialised result of the calculation, recomputed whenever salary,
 /// bonus or investment inputs change.
 model EmployeeTaxYear {
-  id                Int      @id @default(autoincrement())
-  employeeId        BigInt   @map("employee_id")
-  fiscalYear        String   @map("fiscal_year")
-  category          TaxpayerCategory @default(GENERAL)
-  totalGross        Decimal  @map("total_gross") @db.Decimal(14, 2)
-  totalEarning      Decimal  @map("total_earning") @db.Decimal(14, 2)
-  nonTaxable        Decimal  @map("non_taxable") @db.Decimal(14, 2)
-  taxable           Decimal  @db.Decimal(14, 2)
-  totalTax          Decimal  @map("total_tax") @db.Decimal(14, 2)
-  allowableInvestment Decimal @map("allowable_investment") @db.Decimal(14, 2)
-  actualInvestment  Decimal  @default(0) @map("actual_investment") @db.Decimal(14, 2)
-  rebate            Decimal  @db.Decimal(14, 2)
-  advanceIncomeTax  Decimal  @default(0) @map("advance_income_tax") @db.Decimal(14, 2)
-  liability         Decimal  @db.Decimal(14, 2)
-  paidToDate        Decimal  @default(0) @map("paid_to_date") @db.Decimal(14, 2)
-  remainingLiability Decimal @default(0) @map("remaining_liability") @db.Decimal(14, 2)
-  remainingMonths   Int      @default(0) @map("remaining_months")
-  monthlyLiability  Decimal  @default(0) @map("monthly_liability") @db.Decimal(14, 2)
+  id                  Int              @id @default(autoincrement())
+  employeeId          BigInt           @map("employee_id")
+  fiscalYear          String           @map("fiscal_year")
+  category            TaxpayerCategory @default(GENERAL)
+  totalGross          Decimal          @map("total_gross") @db.Decimal(14, 2)
+  totalEarning        Decimal          @map("total_earning") @db.Decimal(14, 2)
+  nonTaxable          Decimal          @map("non_taxable") @db.Decimal(14, 2)
+  taxable             Decimal          @db.Decimal(14, 2)
+  totalTax            Decimal          @map("total_tax") @db.Decimal(14, 2)
+  allowableInvestment Decimal          @map("allowable_investment") @db.Decimal(14, 2)
+  actualInvestment    Decimal          @default(0) @map("actual_investment") @db.Decimal(14, 2)
+  rebate              Decimal          @db.Decimal(14, 2)
+  advanceIncomeTax    Decimal          @default(0) @map("advance_income_tax") @db.Decimal(14, 2)
+  liability           Decimal          @db.Decimal(14, 2)
+  paidToDate          Decimal          @default(0) @map("paid_to_date") @db.Decimal(14, 2)
+  remainingLiability  Decimal          @default(0) @map("remaining_liability") @db.Decimal(14, 2)
+  remainingMonths     Int              @default(0) @map("remaining_months")
+  monthlyLiability    Decimal          @default(0) @map("monthly_liability") @db.Decimal(14, 2)
   /// Full audit trail: gross timeline, earning breakup, slab-by-slab
   /// working. Kept so a payslip can always be explained years later.
-  computation       Json?
-  computedAt        DateTime @default(now()) @map("computed_at")
+  computation         Json?
+  computedAt          DateTime         @default(now()) @map("computed_at")
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
@@ -1505,16 +1532,16 @@ model TaxPayment {
 // ════════════════════════════════════════════════════════════════════════
 
 model FoodProgram {
-  id        Int     @id @default(autoincrement())
-  companyId Int     @map("company_id")
-  name      String  // e.g. "Kormo Lunch Management"
+  id           Int     @id @default(autoincrement())
+  companyId    Int     @map("company_id")
+  name         String // e.g. "Kormo Lunch Management"
   /// What the employee pays per meal (the company subsidises the rest).
-  selfCost  Decimal @map("self_cost") @db.Decimal(10, 2)
+  selfCost     Decimal @map("self_cost") @db.Decimal(10, 2)
   /// Full chargeable rate for a guest meal.
-  guestCost Decimal @map("guest_cost") @db.Decimal(10, 2)
+  guestCost    Decimal @map("guest_cost") @db.Decimal(10, 2)
   /// Cut-off (HH:mm) after which a meal can no longer be cancelled.
-  cancelCutoff String @default("09:30") @map("cancel_cutoff")
-  isActive  Boolean @default(true) @map("is_active")
+  cancelCutoff String  @default("09:30") @map("cancel_cutoff")
+  isActive     Boolean @default(true) @map("is_active")
 
   company       Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   menus         FoodMenu[]
@@ -1542,12 +1569,12 @@ model FoodMenu {
 }
 
 model MealSubscription {
-  id            Int       @id @default(autoincrement())
-  employeeId    BigInt    @map("employee_id")
-  foodProgramId Int       @map("food_program_id")
-  subscribedAt  DateTime  @default(now()) @map("subscribed_at")
+  id             Int       @id @default(autoincrement())
+  employeeId     BigInt    @map("employee_id")
+  foodProgramId  Int       @map("food_program_id")
+  subscribedAt   DateTime  @default(now()) @map("subscribed_at")
   unsubscribedAt DateTime? @map("unsubscribed_at")
-  isActive      Boolean   @default(true) @map("is_active")
+  isActive       Boolean   @default(true) @map("is_active")
 
   employee Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   program  FoodProgram @relation(fields: [foodProgramId], references: [id], onDelete: Cascade)
@@ -1586,19 +1613,19 @@ model Meal {
 /// Goals only exist inside a cycle; an employee must be enrolled in a
 /// cycle before they can create one (matches the reference behaviour).
 model GoalCycle {
-  id        Int      @id @default(autoincrement())
-  companyId Int      @map("company_id")
-  name      String   // e.g. "FY 2026-27 H1"
+  id                Int      @id @default(autoincrement())
+  companyId         Int      @map("company_id")
+  name              String // e.g. "FY 2026-27 H1"
   /// Window in which goals may be authored/edited.
-  startDate DateTime @map("start_date") @db.Date
-  endDate   DateTime @map("end_date") @db.Date
+  startDate         DateTime @map("start_date") @db.Date
+  endDate           DateTime @map("end_date") @db.Date
   /// Window in which reviews/feedback may be submitted.
   feedbackStartDate DateTime @map("feedback_start_date") @db.Date
   feedbackEndDate   DateTime @map("feedback_end_date") @db.Date
   weightMustTotal   Int      @default(100) @map("weight_must_total")
-  isActive  Boolean  @default(true) @map("is_active")
+  isActive          Boolean  @default(true) @map("is_active")
 
-  company      Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company      Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
   participants GoalCycleMember[]
   goals        Goal[]
 
@@ -1607,8 +1634,8 @@ model GoalCycle {
 }
 
 model GoalCycleMember {
-  goalCycleId Int    @map("goal_cycle_id")
-  employeeId  BigInt @map("employee_id")
+  goalCycleId Int      @map("goal_cycle_id")
+  employeeId  BigInt   @map("employee_id")
   enrolledAt  DateTime @default(now()) @map("enrolled_at")
 
   cycle GoalCycle @relation(fields: [goalCycleId], references: [id], onDelete: Cascade)
@@ -1618,22 +1645,22 @@ model GoalCycleMember {
 }
 
 model Goal {
-  id          Int        @id @default(autoincrement())
-  goalCycleId Int        @map("goal_cycle_id")
-  employeeId  BigInt     @map("employee_id")
+  id           Int        @id @default(autoincrement())
+  goalCycleId  Int        @map("goal_cycle_id")
+  employeeId   BigInt     @map("employee_id")
   /// Set when this goal cascades from a manager's goal.
-  parentGoalId Int?      @map("parent_goal_id")
-  title       String
-  description String?
+  parentGoalId Int?       @map("parent_goal_id")
+  title        String
+  description  String?
   /// Measurable target, e.g. "Reduce onboarding TAT to 3 days".
-  metric      String?
-  target      String?
-  weight      Int        @default(0)
-  progressPct Int        @default(0) @map("progress_pct")
-  status      GoalStatus @default(DRAFT)
-  dueDate     DateTime?  @map("due_date") @db.Date
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
+  metric       String?
+  target       String?
+  weight       Int        @default(0)
+  progressPct  Int        @default(0) @map("progress_pct")
+  status       GoalStatus @default(DRAFT)
+  dueDate      DateTime?  @map("due_date") @db.Date
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
 
   cycle    GoalCycle    @relation(fields: [goalCycleId], references: [id], onDelete: Cascade)
   employee Employee     @relation("GoalOwner", fields: [employeeId], references: [id], onDelete: Cascade)
@@ -1646,15 +1673,15 @@ model Goal {
 }
 
 model GoalReview {
-  id         Int         @id @default(autoincrement())
-  goalId     Int         @map("goal_id")
-  reviewerId BigInt      @map("reviewer_id")
-  stage      ReviewStage @default(SELF_ASSESSMENT)
+  id          Int         @id @default(autoincrement())
+  goalId      Int         @map("goal_id")
+  reviewerId  BigInt      @map("reviewer_id")
+  stage       ReviewStage @default(SELF_ASSESSMENT)
   /// 1–5 rating scale.
-  rating     Int?
-  comment    String?
-  submittedAt DateTime?  @map("submitted_at")
-  createdAt  DateTime    @default(now()) @map("created_at")
+  rating      Int?
+  comment     String?
+  submittedAt DateTime?   @map("submitted_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
 
   goal     Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
   reviewer Employee @relation("GoalReviewer", fields: [reviewerId], references: [id], onDelete: Cascade)
@@ -1665,21 +1692,21 @@ model GoalReview {
 
 /// Probation-confirmation appraisal.
 model JobConfirmationReview {
-  id           Int                  @id @default(autoincrement())
-  employeeId   BigInt               @map("employee_id")
-  reviewerId   BigInt?              @map("reviewer_id")
-  dueDate      DateTime             @map("due_date") @db.Date
-  stage        ReviewStage          @default(SELF_ASSESSMENT)
-  decision     ConfirmationDecision @default(PENDING)
+  id             Int                  @id @default(autoincrement())
+  employeeId     BigInt               @map("employee_id")
+  reviewerId     BigInt?              @map("reviewer_id")
+  dueDate        DateTime             @map("due_date") @db.Date
+  stage          ReviewStage          @default(SELF_ASSESSMENT)
+  decision       ConfirmationDecision @default(PENDING)
   /// Scored competencies: [{ "criterion": "Quality of work", "score": 4 }]
-  scorecard    Json?
-  overallScore Decimal?             @map("overall_score") @db.Decimal(5, 2)
-  strengths    String?
-  improvements String?
+  scorecard      Json?
+  overallScore   Decimal?             @map("overall_score") @db.Decimal(5, 2)
+  strengths      String?
+  improvements   String?
   /// Set when the decision is EXTENDED.
-  extendedToDate DateTime?          @map("extended_to_date") @db.Date
-  completedAt  DateTime?            @map("completed_at")
-  createdAt    DateTime             @default(now()) @map("created_at")
+  extendedToDate DateTime?            @map("extended_to_date") @db.Date
+  completedAt    DateTime?            @map("completed_at")
+  createdAt      DateTime             @default(now()) @map("created_at")
 
   employee Employee  @relation("ConfirmationSubject", fields: [employeeId], references: [id], onDelete: Cascade)
   reviewer Employee? @relation("ConfirmationReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
@@ -1694,21 +1721,21 @@ model JobConfirmationReview {
 // ════════════════════════════════════════════════════════════════════════
 
 model Customer {
-  id           Int          @id @default(autoincrement())
-  companyId    Int          @map("company_id")
-  name         String
-  code         String?
-  address      String?
-  city         String?
-  lat          Float?
-  lng          Float?
+  id            Int          @id @default(autoincrement())
+  companyId     Int          @map("company_id")
+  name          String
+  code          String?
+  address       String?
+  city          String?
+  lat           Float?
+  lng           Float?
   /// Account tier used by the "visits by contact level" analytics.
-  contactLevel ContactLevel @default(B) @map("contact_level")
+  contactLevel  ContactLevel @default(B) @map("contact_level")
   /// pharmacy | hospital | distributor | clinic | corporate
-  orgType      String?      @map("org_type")
-  contactPerson String?     @map("contact_person")
-  contactPhone String?      @map("contact_phone")
-  isActive     Boolean      @default(true) @map("is_active")
+  orgType       String?      @map("org_type")
+  contactPerson String?      @map("contact_person")
+  contactPhone  String?      @map("contact_phone")
+  isActive      Boolean      @default(true) @map("is_active")
 
   company Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
   visits  CustomerVisit[]
@@ -1719,28 +1746,28 @@ model Customer {
 }
 
 model CustomerVisit {
-  id            BigInt   @id @default(autoincrement())
-  customerId    Int      @map("customer_id")
-  employeeId    BigInt   @map("employee_id")
-  visitDate     DateTime @map("visit_date") @db.Date
+  id            BigInt    @id @default(autoincrement())
+  customerId    Int       @map("customer_id")
+  employeeId    BigInt    @map("employee_id")
+  visitDate     DateTime  @map("visit_date") @db.Date
   checkInAt     DateTime? @map("check_in_at")
   checkOutAt    DateTime? @map("check_out_at")
   /// Who at the customer was actually met.
-  personVisited String?  @map("person_visited")
+  personVisited String?   @map("person_visited")
   purpose       String?
   outcome       String?
-  orderValue    Decimal? @map("order_value") @db.Decimal(14, 2)
+  orderValue    Decimal?  @map("order_value") @db.Decimal(14, 2)
   /// GPS of the check-in, for visit verification.
   lat           Float?
   lng           Float?
   /// Metres between the punch and the customer's registered coordinates.
-  distanceM     Int?     @map("distance_m")
-  photoPath     String?  @map("photo_path")
-  isJointVisit  Boolean  @default(false) @map("is_joint_visit")
-  createdAt     DateTime @default(now()) @map("created_at")
+  distanceM     Int?      @map("distance_m")
+  photoPath     String?   @map("photo_path")
+  isJointVisit  Boolean   @default(false) @map("is_joint_visit")
+  createdAt     DateTime  @default(now()) @map("created_at")
 
-  customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  employee     Employee  @relation("VisitOwner", fields: [employeeId], references: [id], onDelete: Cascade)
+  customer     Customer                   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  employee     Employee                   @relation("VisitOwner", fields: [employeeId], references: [id], onDelete: Cascade)
   participants CustomerVisitParticipant[]
 
   @@index([employeeId, visitDate])
@@ -1765,17 +1792,17 @@ model CustomerVisitParticipant {
 /// sensitive: consent is explicit, windowed to working hours, and points
 /// are purged after `retentionDays`.
 model TrackingConfig {
-  employeeId     BigInt    @id @map("employee_id")
-  enabled        Boolean   @default(false)
-  consentGivenAt DateTime? @map("consent_given_at")
+  employeeId       BigInt    @id @map("employee_id")
+  enabled          Boolean   @default(false)
+  consentGivenAt   DateTime? @map("consent_given_at")
   consentRevokedAt DateTime? @map("consent_revoked_at")
   /// Tracking is discarded outside this window (HH:mm, local time).
-  windowStart    String    @default("09:00") @map("window_start")
-  windowEnd      String    @default("19:00") @map("window_end")
+  windowStart      String    @default("09:00") @map("window_start")
+  windowEnd        String    @default("19:00") @map("window_end")
   /// Seconds between breadcrumb samples.
-  pingIntervalSec Int      @default(120) @map("ping_interval_sec")
-  retentionDays  Int       @default(90) @map("retention_days")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  pingIntervalSec  Int       @default(120) @map("ping_interval_sec")
+  retentionDays    Int       @default(90) @map("retention_days")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
@@ -1796,7 +1823,7 @@ model TrackingSession {
   /// Set once the retention window has passed and points were purged.
   purgedAt     DateTime?             @map("purged_at")
 
-  employee Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   points   TrackingPoint[]
 
   @@index([employeeId, startedAt])
@@ -1805,13 +1832,13 @@ model TrackingSession {
 }
 
 model TrackingPoint {
-  id        BigInt   @id @default(autoincrement())
-  sessionId BigInt   @map("session_id")
+  id         BigInt   @id @default(autoincrement())
+  sessionId  BigInt   @map("session_id")
   recordedAt DateTime @map("recorded_at")
-  lat       Float
-  lng       Float
-  accuracyM Int?     @map("accuracy_m")
-  speedKph  Float?   @map("speed_kph")
+  lat        Float
+  lng        Float
+  accuracyM  Int?     @map("accuracy_m")
+  speedKph   Float?   @map("speed_kph")
 
   session TrackingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
@@ -1824,13 +1851,13 @@ model TrackingPoint {
 // ════════════════════════════════════════════════════════════════════════
 
 model OnboardingTemplate {
-  id        Int     @id @default(autoincrement())
-  companyId Int     @map("company_id")
-  name      String
+  id           Int     @id @default(autoincrement())
+  companyId    Int     @map("company_id")
+  name         String
   /// Optionally scope a template to a department or designation.
-  departmentId Int? @map("department_id")
-  isDefault Boolean @default(false) @map("is_default")
-  isActive  Boolean @default(true) @map("is_active")
+  departmentId Int?    @map("department_id")
+  isDefault    Boolean @default(false) @map("is_default")
+  isActive     Boolean @default(true) @map("is_active")
 
   company Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   items   OnboardingTemplateItem[]
@@ -1840,17 +1867,17 @@ model OnboardingTemplate {
 }
 
 model OnboardingTemplateItem {
-  id         Int            @id @default(autoincrement())
-  templateId Int            @map("template_id")
-  lane       OnboardingLane
-  title      String
-  description String?
+  id            Int            @id @default(autoincrement())
+  templateId    Int            @map("template_id")
+  lane          OnboardingLane
+  title         String
+  description   String?
   /// Days relative to the joining date (negative = before day one).
-  dueOffsetDays Int         @default(0) @map("due_offset_days")
+  dueOffsetDays Int            @default(0) @map("due_offset_days")
   /// Task cannot start until every listed item id is DONE.
-  blockedBy  Int[]          @map("blocked_by")
-  isMandatory Boolean       @default(true) @map("is_mandatory")
-  sortOrder  Int            @default(0) @map("sort_order")
+  blockedBy     Int[]          @map("blocked_by")
+  isMandatory   Boolean        @default(true) @map("is_mandatory")
+  sortOrder     Int            @default(0) @map("sort_order")
 
   template OnboardingTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   tasks    OnboardingTask[]
@@ -1891,30 +1918,30 @@ model OnboardingTask {
 // ════════════════════════════════════════════════════════════════════════
 
 model Resignation {
-  id         BigInt           @id @default(autoincrement())
-  employeeId BigInt           @map("employee_id")
+  id                       BigInt           @id @default(autoincrement())
+  employeeId               BigInt           @map("employee_id")
   /// Snapshot of the contractual notice period at submission time.
-  noticePeriodRequiredDays Int @map("notice_period_required_days")
-  submittedAt DateTime        @default(now()) @map("submitted_at")
-  lastWorkingDay DateTime     @map("last_working_day") @db.Date
+  noticePeriodRequiredDays Int              @map("notice_period_required_days")
+  submittedAt              DateTime         @default(now()) @map("submitted_at")
+  lastWorkingDay           DateTime         @map("last_working_day") @db.Date
   /// Derived: days between submission and last working day.
-  noticePeriodServedDays Int  @map("notice_period_served_days")
+  noticePeriodServedDays   Int              @map("notice_period_served_days")
   /// Derived: required − served. Drives salary recovery.
-  noticePeriodRecoveryDays Int @map("notice_period_recovery_days")
-  dateOfSeparation DateTime   @map("date_of_separation") @db.Date
-  reason     String           @db.VarChar(255)
+  noticePeriodRecoveryDays Int              @map("notice_period_recovery_days")
+  dateOfSeparation         DateTime         @map("date_of_separation") @db.Date
+  reason                   String           @db.VarChar(255)
   /// Signed resignation letter — mandatory.
-  letterPath String           @map("letter_path")
-  stage      ResignationStage @default(SUBMITTED)
+  letterPath               String           @map("letter_path")
+  stage                    ResignationStage @default(SUBMITTED)
   /// Amount recovered from final settlement for un-served notice.
-  recoveryAmount Decimal?     @map("recovery_amount") @db.Decimal(14, 2)
-  finalSettlementAmount Decimal? @map("final_settlement_amount") @db.Decimal(14, 2)
-  withdrawnAt DateTime?       @map("withdrawn_at")
-  completedAt DateTime?       @map("completed_at")
+  recoveryAmount           Decimal?         @map("recovery_amount") @db.Decimal(14, 2)
+  finalSettlementAmount    Decimal?         @map("final_settlement_amount") @db.Decimal(14, 2)
+  withdrawnAt              DateTime?        @map("withdrawn_at")
+  completedAt              DateTime?        @map("completed_at")
 
-  employee     Employee              @relation("ResignationEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
-  approvals    ResignationApproval[]
-  clearances   ClearanceItem[]
+  employee      Employee              @relation("ResignationEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  approvals     ResignationApproval[]
+  clearances    ClearanceItem[]
   exitInterview ExitInterview?
 
   @@index([employeeId])
@@ -1942,14 +1969,14 @@ model ResignationApproval {
 
 /// Departments that must sign off before an exit is complete.
 model ClearanceDepartment {
-  id           Int     @id @default(autoincrement())
-  companyId    Int     @map("company_id")
-  departmentId Int?    @map("department_id")
-  name         String  // e.g. "IT Asset Return", "Finance — Loan & Advance"
+  id           Int      @id @default(autoincrement())
+  companyId    Int      @map("company_id")
+  departmentId Int?     @map("department_id")
+  name         String // e.g. "IT Asset Return", "Finance — Loan & Advance"
   /// Default checklist rendered for this department.
   checklist    String[]
-  sortOrder    Int     @default(0) @map("sort_order")
-  isActive     Boolean @default(true) @map("is_active")
+  sortOrder    Int      @default(0) @map("sort_order")
+  isActive     Boolean  @default(true) @map("is_active")
 
   company    Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
   department Department?     @relation(fields: [departmentId], references: [id], onDelete: SetNull)
@@ -1960,18 +1987,18 @@ model ClearanceDepartment {
 }
 
 model ClearanceItem {
-  id            BigInt        @id @default(autoincrement())
-  resignationId BigInt        @map("resignation_id")
-  clearanceDepartmentId Int   @map("clearance_department_id")
+  id                    BigInt        @id @default(autoincrement())
+  resignationId         BigInt        @map("resignation_id")
+  clearanceDepartmentId Int           @map("clearance_department_id")
   /// The person accountable for signing this line off.
-  ownerId       BigInt?       @map("owner_id")
-  status        RequestStatus @default(PENDING)
+  ownerId               BigInt?       @map("owner_id")
+  status                RequestStatus @default(PENDING)
   /// Outstanding dues/assets recovered at clearance.
-  duesAmount    Decimal?      @map("dues_amount") @db.Decimal(14, 2)
-  remarks       String?
+  duesAmount            Decimal?      @map("dues_amount") @db.Decimal(14, 2)
+  remarks               String?
   /// [{ "item": "Laptop DL-4421", "returned": true }]
-  checklistState Json?        @map("checklist_state")
-  clearedAt     DateTime?     @map("cleared_at")
+  checklistState        Json?         @map("checklist_state")
+  clearedAt             DateTime?     @map("cleared_at")
 
   resignation Resignation         @relation(fields: [resignationId], references: [id], onDelete: Cascade)
   department  ClearanceDepartment @relation(fields: [clearanceDepartmentId], references: [id], onDelete: Cascade)
@@ -1983,15 +2010,15 @@ model ClearanceItem {
 }
 
 model ExitInterview {
-  id            BigInt   @id @default(autoincrement())
-  resignationId BigInt   @unique @map("resignation_id")
+  id            BigInt    @id @default(autoincrement())
+  resignationId BigInt    @unique @map("resignation_id")
   /// [{ "question": "...", "answer": "...", "rating": 4 }]
   responses     Json
   /// Free-text primary reason, distinct from the formal resignation reason.
-  primaryReason String?  @map("primary_reason")
-  wouldRejoin   Boolean? @map("would_rejoin")
-  npsScore      Int?     @map("nps_score")
-  conductedById BigInt?  @map("conducted_by_id")
+  primaryReason String?   @map("primary_reason")
+  wouldRejoin   Boolean?  @map("would_rejoin")
+  npsScore      Int?      @map("nps_score")
+  conductedById BigInt?   @map("conducted_by_id")
   conductedAt   DateTime? @map("conducted_at")
 
   resignation Resignation @relation(fields: [resignationId], references: [id], onDelete: Cascade)
@@ -2004,19 +2031,19 @@ model ExitInterview {
 // ════════════════════════════════════════════════════════════════════════
 
 model Room {
-  id         Int     @id @default(autoincrement())
-  companyId  Int     @map("company_id")
-  locationId Int?    @map("location_id")
+  id         Int      @id @default(autoincrement())
+  companyId  Int      @map("company_id")
+  locationId Int?     @map("location_id")
   name       String
   floor      String?
-  capacity   Int     @default(4)
+  capacity   Int      @default(4)
   /// ["Projector", "Whiteboard", "VC"]
   amenities  String[]
-  colorHex   String? @map("color_hex")
+  colorHex   String?  @map("color_hex")
   /// Bookable window (HH:mm).
-  openTime   String  @default("00:00") @map("open_time")
-  closeTime  String  @default("23:59") @map("close_time")
-  isActive   Boolean @default(true) @map("is_active")
+  openTime   String   @default("00:00") @map("open_time")
+  closeTime  String   @default("23:59") @map("close_time")
+  isActive   Boolean  @default(true) @map("is_active")
 
   company  Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   location Location?     @relation(fields: [locationId], references: [id], onDelete: SetNull)
@@ -2027,22 +2054,22 @@ model Room {
 }
 
 model RoomBooking {
-  id          BigInt        @id @default(autoincrement())
-  roomId      Int           @map("room_id")
-  organiserId BigInt        @map("organiser_id")
-  title       String
-  agenda      String?
-  startAt     DateTime      @map("start_at")
-  endAt       DateTime      @map("end_at")
-  status      BookingStatus @default(CONFIRMED)
+  id             BigInt        @id @default(autoincrement())
+  roomId         Int           @map("room_id")
+  organiserId    BigInt        @map("organiser_id")
+  title          String
+  agenda         String?
+  startAt        DateTime      @map("start_at")
+  endAt          DateTime      @map("end_at")
+  status         BookingStatus @default(CONFIRMED)
   /// RRULE-ish descriptor for repeating meetings.
-  recurrence  Json?
+  recurrence     Json?
   /// Set on each generated occurrence of a recurring series.
-  seriesId    String?       @map("series_id")
-  externalGuests String[]   @map("external_guests")
-  cancelledAt DateTime?     @map("cancelled_at")
-  cancelReason String?      @map("cancel_reason")
-  createdAt   DateTime      @default(now()) @map("created_at")
+  seriesId       String?       @map("series_id")
+  externalGuests String[]      @map("external_guests")
+  cancelledAt    DateTime?     @map("cancelled_at")
+  cancelReason   String?       @map("cancel_reason")
+  createdAt      DateTime      @default(now()) @map("created_at")
 
   room      Room                  @relation(fields: [roomId], references: [id], onDelete: Cascade)
   organiser Employee              @relation("BookingOrganiser", fields: [organiserId], references: [id], onDelete: Cascade)
@@ -2072,19 +2099,19 @@ model RoomBookingAttendee {
 // ════════════════════════════════════════════════════════════════════════
 
 model Notice {
-  id         Int      @id @default(autoincrement())
-  companyId  Int      @map("company_id")
-  title      String
-  body       String
-  authorId   BigInt?  @map("author_id")
+  id             Int       @id @default(autoincrement())
+  companyId      Int       @map("company_id")
+  title          String
+  body           String
+  authorId       BigInt?   @map("author_id")
   /// Pin to the top of the notice board.
-  isPinned   Boolean  @default(false) @map("is_pinned")
-  publishAt  DateTime @default(now()) @map("publish_at")
-  expiresAt  DateTime? @map("expires_at")
-  attachmentPath String? @map("attachment_path")
+  isPinned       Boolean   @default(false) @map("is_pinned")
+  publishAt      DateTime  @default(now()) @map("publish_at")
+  expiresAt      DateTime? @map("expires_at")
+  attachmentPath String?   @map("attachment_path")
   /// Restrict visibility to specific departments (empty = everyone).
-  departmentIds Int[]  @map("department_ids")
-  createdAt  DateTime @default(now()) @map("created_at")
+  departmentIds  Int[]     @map("department_ids")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
   company Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   author  Employee? @relation("NoticeAuthor", fields: [authorId], references: [id], onDelete: SetNull)
@@ -2094,18 +2121,18 @@ model Notice {
 }
 
 model OfficePolicy {
-  id          Int      @id @default(autoincrement())
-  companyId   Int      @map("company_id")
-  title       String
-  category    String?  // HR | IT | Finance | Safety | Code of Conduct
-  version     String   @default("1.0")
-  summary     String?
-  documentPath String? @map("document_path")
+  id            Int      @id @default(autoincrement())
+  companyId     Int      @map("company_id")
+  title         String
+  category      String? // HR | IT | Finance | Safety | Code of Conduct
+  version       String   @default("1.0")
+  summary       String?
+  documentPath  String?  @map("document_path")
   effectiveFrom DateTime @map("effective_from") @db.Date
-  isLatest    Boolean  @default(true) @map("is_latest")
+  isLatest      Boolean  @default(true) @map("is_latest")
   /// Requires an explicit employee acknowledgement.
-  requiresAck Boolean  @default(false) @map("requires_ack")
-  createdAt   DateTime @default(now()) @map("created_at")
+  requiresAck   Boolean  @default(false) @map("requires_ack")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -2135,19 +2162,19 @@ model Notification {
 }
 
 model HelpdeskTicket {
-  id          Int              @id @default(autoincrement())
-  companyId   Int              @map("company_id")
-  requesterId BigInt           @map("requester_id")
-  assigneeId  BigInt?          @map("assignee_id")
-  category    String           // HR | IT | Payroll | Facilities
-  subject     String
-  body        String
-  priority    HelpdeskPriority @default(MEDIUM)
-  status      HelpdeskStatus   @default(OPEN)
-  attachmentPath String?       @map("attachment_path")
-  resolutionNote String?       @map("resolution_note")
-  createdAt   DateTime         @default(now()) @map("created_at")
-  resolvedAt  DateTime?        @map("resolved_at")
+  id             Int              @id @default(autoincrement())
+  companyId      Int              @map("company_id")
+  requesterId    BigInt           @map("requester_id")
+  assigneeId     BigInt?          @map("assignee_id")
+  category       String // HR | IT | Payroll | Facilities
+  subject        String
+  body           String
+  priority       HelpdeskPriority @default(MEDIUM)
+  status         HelpdeskStatus   @default(OPEN)
+  attachmentPath String?          @map("attachment_path")
+  resolutionNote String?          @map("resolution_note")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  resolvedAt     DateTime?        @map("resolved_at")
 
   company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   requester Employee  @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Cascade)
@@ -2164,7 +2191,7 @@ model AuditLog {
   id         BigInt   @id @default(autoincrement())
   actorId    BigInt?  @map("actor_id")
   companyId  Int?     @map("company_id")
-  action     String   // e.g. "leave.approve"
+  action     String // e.g. "leave.approve"
   entityType String   @map("entity_type")
   entityId   String   @map("entity_id")
   before     Json?
@@ -2183,24 +2210,24 @@ model AuditLog {
 /// Async export jobs. The client polls (or gets a socket push) and then
 /// downloads via a short-lived presigned URL — never a raw object path.
 model ReportJob {
-  id           String       @id @default(uuid())
-  companyId    Int          @map("company_id")
-  requestedById BigInt      @map("requested_by_id")
+  id            String       @id @default(uuid())
+  companyId     Int          @map("company_id")
+  requestedById BigInt       @map("requested_by_id")
   /// e.g. EmployeeTax | Payslips | AttendanceMonthly | LeaveLedger | OrgTree
-  reportType   String       @map("report_type")
-  format       String       @default("xlsx")
-  params       Json?
-  status       ReportStatus @default(QUEUED)
-  progressPct  Int          @default(0) @map("progress_pct")
-  filePath     String?      @map("file_path")
-  fileSizeBytes Int?        @map("file_size_bytes")
-  rowCount     Int?         @map("row_count")
-  error        String?
+  reportType    String       @map("report_type")
+  format        String       @default("xlsx")
+  params        Json?
+  status        ReportStatus @default(QUEUED)
+  progressPct   Int          @default(0) @map("progress_pct")
+  filePath      String?      @map("file_path")
+  fileSizeBytes Int?         @map("file_size_bytes")
+  rowCount      Int?         @map("row_count")
+  error         String?
   /// Generated artefacts are swept after this instant.
-  expiresAt    DateTime?    @map("expires_at")
-  createdAt    DateTime     @default(now()) @map("created_at")
-  startedAt    DateTime?    @map("started_at")
-  finishedAt   DateTime?    @map("finished_at")
+  expiresAt     DateTime?    @map("expires_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  startedAt     DateTime?    @map("started_at")
+  finishedAt    DateTime?    @map("finished_at")
 
   company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   requestedBy Employee @relation(fields: [requestedById], references: [id], onDelete: Cascade)

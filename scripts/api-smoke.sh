@@ -11,6 +11,24 @@ login() {  # login <user> <cookiejar>
     "$BASE/auth/login" -o /dev/null -w '%{http_code}'
 }
 
+# Asserts something about a response body, not just its status code.
+# Status-only checks let a whole category of bug through: an endpoint that
+# returns 200 with the exemption silently zeroed still "passes".
+assert_json() { # assert_json <label> <cookiejar> <path> <node -e expression on `d`>
+  local label="$1" jar="$2" path="$3" expr="$4"
+  curl -s -m 20 -b "$jar" "$BASE$path" -o "$SP/assert.json"
+  if node -e "
+    const d = require('$SP/assert.json');
+    if (!($expr)) { console.error('  assertion failed: $expr'); process.exit(1); }
+  " 2>"$SP/assert.err"; then
+    PASS=$((PASS+1)); printf '  \033[32m✓\033[0m %-42s %s\n' "$label" "ok"
+  else
+    FAIL=$((FAIL+1)); FAILURES+=("$label : $expr")
+    printf '  \033[31m✗\033[0m %-42s %s\n' "$label" "FAILED"
+    cat "$SP/assert.err"; head -c 300 "$SP/assert.json"; echo
+  fi
+}
+
 check() { # check <label> <cookiejar> <expected> <path>
   local label="$1" jar="$2" expect="$3" path="$4"
   local code
@@ -116,10 +134,34 @@ check "payroll runs (payroll admin)"   "$PAY" 200 "/payroll/runs"
 check "cost trend"                     "$PAY" 200 "/payroll/cost-trend"
 check "payroll runs (employee 403)"    "$EMP" 403 "/payroll/runs"
 check "fiscal years"                   "$EMP" 200 "/tax/fiscal-years"
-check "tax statement"                  "$EMP" 200 "/tax/statement?fiscalYear=2026-27"
-check "tax payments"                   "$EMP" 200 "/tax/payments?fiscalYear=2026-27"
-check "tax configuration"              "$EMP" 200 "/tax/configuration?fiscalYear=2026-27"
-check "company tax summary"            "$PAY" 200 "/tax/company-summary?fiscalYear=2026-27"
+
+# The fiscal-year *label* depends on the tenant's country pack: "2026" for a
+# January tax year, "2026-27" for one starting in April or July. Ask the API
+# which year is current rather than hardcoding a label, or this suite passes
+# only for whichever country it was written against.
+FY=$(curl -s -m 20 -b "$EMP" "$BASE/tax/fiscal-years" \
+  | sed -n 's/.*"current":"\([^"]*\)".*/\1/p')
+if [ -z "$FY" ]; then
+  echo "  could not resolve the current fiscal year from /tax/fiscal-years" >&2
+  exit 1
+fi
+echo "  (fiscal year: $FY)"
+
+check "tax statement"                  "$EMP" 200 "/tax/statement?fiscalYear=$FY"
+check "tax payments"                   "$EMP" 200 "/tax/payments?fiscalYear=$FY"
+check "tax configuration"              "$EMP" 200 "/tax/configuration?fiscalYear=$FY"
+check "company tax summary"            "$PAY" 200 "/tax/company-summary?fiscalYear=$FY"
+
+# The exemption has two shapes and the country pack picks one. A flat
+# standard deduction that fails to reach the engine leaves nonTaxable at
+# zero, the statement still returns 200, and every employee is quietly
+# over-taxed — which is exactly how this broke once. Assert the shape the
+# tenant's config actually declares produced a real number.
+assert_json "exemption is applied"      "$EMP" "/tax/statement?fiscalYear=$FY" \
+  "!d.taxApplicable || (d.config.nonTaxableFlat == null ? d.config.nonTaxableCap === 0 || d.computation.nonTaxable > 0 : d.config.nonTaxableFlat === 0 || d.computation.nonTaxable > 0)"
+
+assert_json "taxable never exceeds earning" "$EMP" "/tax/statement?fiscalYear=$FY" \
+  "!d.taxApplicable || d.computation.taxable <= d.computation.totalEarning"
 check "company tax (employee 403)"     "$EMP" 403 "/tax/company-summary"
 
 echo "── performance ──"

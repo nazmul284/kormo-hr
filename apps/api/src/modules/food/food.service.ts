@@ -5,6 +5,7 @@ import { PERMISSIONS, initials } from '@kormo/shared';
 import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { TenantContextService } from '../../common/tenant/tenant-context.service';
 import type { SessionPrincipal } from '../../common/types';
 import {
   addDays, dateOnly, endOfMonth, localMinutes, monthWindow, startOfMonth, toIsoDate,
@@ -13,7 +14,10 @@ import { companyFilter } from '../../common/utils/scope';
 
 @Injectable()
 export class FoodService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tenant: TenantContextService,
+  ) {}
 
   async programs(user: SessionPrincipal) {
     const programs = await this.prisma.foodProgram.findMany({
@@ -87,7 +91,8 @@ export class FoodService {
 
     const cutoffMinutes = this.parseCutoff(program.cancelCutoff);
     const todayIso = toIsoDate(new Date());
-    const nowMinutes = localMinutes(new Date());
+    const { timezone } = await this.tenant.get(user.companyId);
+    const nowMinutes = localMinutes(new Date(), timezone);
 
     return {
       program: {
@@ -270,7 +275,8 @@ export class FoodService {
     if (iso < todayIso) {
       throw new BadRequestException('You cannot cancel a meal in the past.');
     }
-    if (iso === todayIso && localMinutes(new Date()) >= this.parseCutoff(meal.program.cancelCutoff)) {
+    const { timezone } = await this.tenant.get(user.companyId);
+    if (iso === todayIso && localMinutes(new Date(), timezone) >= this.parseCutoff(meal.program.cancelCutoff)) {
       throw new BadRequestException(
         `Today's meal can no longer be cancelled — the cut-off was ${meal.program.cancelCutoff}. `
         + 'The kitchen has already been given the headcount.',

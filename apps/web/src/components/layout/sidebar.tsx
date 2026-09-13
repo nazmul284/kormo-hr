@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ChevronDown, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { ChevronDown, Coffee, Github, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { LogoMark, Wordmark } from './logo';
+import { DEMO_MODE } from '@/lib/demo';
 import { useSession } from '@/lib/session';
 import { visibleNav } from '@/lib/nav';
 import { cn } from '@/lib/utils';
@@ -240,6 +241,41 @@ export function Sidebar({
             <br />
             <span className="text-ink-muted/70">{user?.company.name ?? ''}</span>
           </p>
+
+          {/*
+            * Project links, shown only in the public demo. A company
+            * running this internally has no use for a "star us on GitHub"
+            * button in their HR sidebar, and putting one there would be
+            * advertising inside somebody else's payroll software.
+            */}
+          {DEMO_MODE ? (
+            <div className="mt-2.5 flex items-center gap-1.5">
+              <a
+                href="https://github.com/nazmul284/kormo-hr"
+                target="_blank"
+                rel="noreferrer"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border
+                           border-line bg-surface px-2 py-1.5 text-2xs font-medium
+                           text-ink-secondary transition-colors hover:border-line-strong
+                           hover:bg-surface-sunken hover:text-ink"
+              >
+                <Github className="size-3.5" aria-hidden />
+                Source
+              </a>
+              <a
+                href="https://buymeacoffee.com/heynazmul"
+                target="_blank"
+                rel="noreferrer"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border
+                           border-line bg-surface px-2 py-1.5 text-2xs font-medium
+                           text-ink-secondary transition-colors hover:border-line-strong
+                           hover:bg-surface-sunken hover:text-ink"
+              >
+                <Coffee className="size-3.5" aria-hidden />
+                Sponsor
+              </a>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

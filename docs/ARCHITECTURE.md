@@ -18,7 +18,7 @@ Next.js 14 (:3000) ── /api/* rewrite ──▶ NestJS (:4000)
    · middleware route guard                · MinIO (S3-compatible)
                      │
               packages/shared
-     tax engine · leave maths · permission keys
+   tax engine · leave maths · permission keys · country packs
 ```
 
 ## Why the API is proxied onto the app's origin
@@ -213,3 +213,89 @@ The screenshot harness waits for **data**, not a fixed delay. An earlier version
 1200ms and silently captured loading skeletons on four routes — a check that passes while
 showing nothing. It now polls until no skeletons remain *and* an `<h1>` exists, and reports
 a route that never settles.
+
+
+---
+
+## Localisation: country packs
+
+Everything that differs between one country's HR setup and another's lives in
+`packages/shared/src/locale/packs/` — currency and its grouping, weekend days, timezone,
+public holidays, tax rules, and the formats for phone numbers and national IDs. Six packs
+ship; adding a seventh is two files.
+
+The load-bearing constraint is that **nothing outside `locale/packs/` may branch on a
+country code**. Not a style preference — it is what keeps the count of places that have
+to change when a country is added at exactly two. Wherever the rule cannot be followed,
+the pack is missing a field, and the fix is to add the field.
+
+### Where a tenant's settings come from
+
+```
+Company row                 country · timezone · locale · weekendDays · fiscalYearStartMonth
+   │
+   ├─▶ TenantContextService  cached 30s; injected into attendance, leave, booking, food
+   │      · timezone   → atLocalTime / localMinutes, so clock-ins are in the office's hours
+   │      · weekendDays → computeLeaveDays, so leave burns the right days
+   │
+   ├─▶ TaxService          country → which TaxConfig rows; pack → filing categories + labels
+   │
+   └─▶ /auth/me            ships `locale` with the session; the browser formats money,
+                           dates and clock times from it (apps/web/src/lib/locale.ts)
+```
+
+Two details worth knowing:
+
+**The weekend is stored per tenant, not derived from the country.** A company can run a
+six-day week without forking a pack. The country pack supplies the default at seed time;
+after that the Company row is the truth.
+
+**The fiscal-year month also lives on the Company row.** A tenant is allowed to run a
+fiscal year its country's tax authority does not, and several do.
+
+### The tax engine stayed country-agnostic
+
+`computeTax` never learns which country it is running. It takes a `TaxConfigInput` —
+slabs, exemption, rebate percentages, minimum — and returns a computation. Country packs
+*build* that config; the database *stores* it, versioned per fiscal year and per filing
+category. Superseding a budget is adding rows.
+
+The one concession to variety is the exemption, which has two shapes and does one or the
+other, never both:
+
+| | Shape | Used by |
+|---|---|---|
+| `nonTaxableFlat` | A flat standard deduction | US, UK, India, UAE, International |
+| `nonTaxableDivisor` + `nonTaxableCap` | Proportional to earnings, capped | Bangladesh |
+
+Presence of the key is what selects the branch — which is why `loadConfig` maps a `NULL`
+column to `undefined` rather than `null`. Getting that wrong exempted nothing while every
+endpoint still returned 200; `scripts/api-smoke.sh` now asserts on the body.
+
+---
+
+## The static demo
+
+The published demo is the same front end with no server behind it: `output: 'export'`
+produces static files, and the API client resolves from a bundle of JSON fixtures
+(`apps/web/src/lib/demo.ts`).
+
+The fixtures are **recorded, not written**. `scripts/capture-demo.mjs` drives a real
+browser through every route as each role against a real seeded backend, and saves every
+`/api/*` response the app actually asked for. A hand-written mock drifts from the API the
+moment either changes, and the drift is invisible until someone reports that the demo
+shows something the product does not.
+
+Three things the recording has to get right, each learned by getting it wrong:
+
+- **Walk the routes, then fetch what routes cannot reach.** Tab-gated lists and per-employee
+  detail endpoints are never loaded by simply arriving at a page, and they are the first
+  things a visitor clicks.
+- **Paginate at the size the UI uses.** Asking for one huge page exceeded the API's own
+  validation cap, so the request 400'd, was never recorded, and the directory's second
+  page came up empty.
+- **Enumerate `generateStaticParams` from the bundle.** A guessed ID range meant every
+  colleague card prefetched a 404.
+
+Writes are refused rather than faked. A demo that appears to approve a leave request and
+forgets it on reload leaves the visitor unsure whether they hit a bug.

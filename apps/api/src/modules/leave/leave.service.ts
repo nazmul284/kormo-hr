@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client';
 
 import { paginate } from '../../common/dto/pagination.dto';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { TenantContextService } from '../../common/tenant/tenant-context.service';
 import type { SessionPrincipal } from '../../common/types';
 import { addDays, currentYear, dateOnly, toIsoDate } from '../../common/utils/dates';
 import { assertCanViewEmployee, collectSubordinateIds, companyFilter } from '../../common/utils/scope';
@@ -23,7 +24,10 @@ const BRADFORD_FORMULA =
 
 @Injectable()
 export class LeaveService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tenant: TenantContextService,
+  ) {}
 
   // ── reference data ─────────────────────────────────────────────────
 
@@ -187,6 +191,8 @@ export class LeaveService {
       select: { name: true, startDate: true, endDate: true },
     });
 
+    const { weekendDays } = await this.tenant.get(employee.companyId);
+
     // Roster off-days override the default weekend for shift workers.
     const rosterOff = await this.prisma.rosterAssignment.findMany({
       where: { employeeId: user.id, date: { gte: start, lte: end }, isWeekend: true },
@@ -202,9 +208,10 @@ export class LeaveService {
       countsHolidays: leaveType.countsHolidays,
       dayPart: dto.dayPart ?? 'FULL_DAY',
       rosterOffDates: rosterOff.map((r) => toIsoDate(r.date)),
-      // An employee on a shift roster may have a non-standard weekend, so
-      // fall back to the roster rather than assuming Fri/Sat.
-      weekendDays: rosterOff.length > 0 ? [] : undefined,
+      // An employee on a shift roster has their own off-days, which
+      // override the company weekend entirely; everyone else gets the
+      // tenant's, which the country pack sets.
+      weekendDays: rosterOff.length > 0 ? [] : weekendDays,
     });
 
     return { leaveType, math, employee, start, end };

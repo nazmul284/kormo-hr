@@ -1,7 +1,7 @@
 import {
   BadRequestException, Inject, Injectable, Logger, NotFoundException, UnauthorizedException,
 } from '@nestjs/common';
-import { serviceLength } from '@kormo/shared';
+import { getCountryPack, serviceLength } from '@kormo/shared';
 import bcrypt from 'bcryptjs';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
@@ -239,7 +239,13 @@ export class AuthService {
           isLineManager: true, thumbnailsPath01: true,
           designation: { select: { name: true, grade: true } },
           department: { select: { id: true, name: true } },
-          company: { select: { id: true, name: true, alias: true } },
+          company: {
+            select: {
+              id: true, name: true, alias: true,
+              country: true, timezone: true, locale: true, weekendDays: true,
+              fiscalYearStartMonth: true,
+            },
+          },
           location: { select: { id: true, name: true } },
         },
       }),
@@ -250,6 +256,8 @@ export class AuthService {
         orderBy: { id: 'asc' },
       }),
     ]);
+
+    const pack = getCountryPack(employee.company.country);
 
     return {
       id: employee.id,
@@ -266,7 +274,28 @@ export class AuthService {
       designationGrade: employee.designation?.grade ?? null,
       department: employee.department?.name ?? null,
       departmentId: employee.department?.id ?? null,
-      company: employee.company,
+      company: {
+        id: employee.company.id,
+        name: employee.company.name,
+        alias: employee.company.alias,
+      },
+      /**
+       * How this tenant renders money, dates and weeks.
+       *
+       * Shipped with the session rather than fetched separately because
+       * the very first screen paints money: a second round trip would
+       * mean either a flash of the wrong currency or a spinner over the
+       * whole dashboard.
+       */
+      locale: {
+        country: pack.code,
+        countryName: pack.name,
+        currency: pack.currency,
+        timezone: employee.company.timezone || pack.timezone,
+        locale: employee.company.locale || pack.locale,
+        weekendDays: employee.company.weekendDays ?? pack.weekendDays,
+        fiscalYearStartMonth: employee.company.fiscalYearStartMonth,
+      },
       location: employee.location,
       joiningDate: employee.joiningDate,
       serviceLength: serviceLength(employee.joiningDate).label,

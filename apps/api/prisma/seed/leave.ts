@@ -33,7 +33,9 @@ const LEAVE_TYPE_SPEC = [
     countsHolidays: false, sortOrder: 3,
   },
   {
-    // Bangladesh Labour Act: 16 weeks, counted in calendar days.
+    // 16 weeks, counted in calendar days rather than working ones —
+    // the shape statutory maternity leave takes in most jurisdictions,
+    // and the reason `countsHolidays` exists on a leave type at all.
     key: 'maternity', label: 'Maternity Leave', defaultCount: 112,
     isCarryForwardable: false, maxCarryForward: 0, requiresDocument: true,
     genderRestriction: 'FEMALE_ONLY', maxConsecutiveDays: 0, minNoticeDays: 30,
@@ -75,14 +77,14 @@ const REASONS: Record<string, string[]> = {
   ],
   annual: [
     'Family holiday planned in Cox\'s Bazar.',
-    'Annual leave to visit my home district.',
+    'Annual leave to visit family back home.',
     'Taking planned leave to spend time with family.',
     'Pre-booked trip abroad with family.',
   ],
-  maternity: ['Statutory maternity leave as per the Bangladesh Labour Act.'],
+  maternity: ['Statutory maternity leave.'],
   paternity: ['Paternity leave following the birth of my child.'],
   comp_off: [
-    'Compensatory off against working the Eid holiday.',
+    'Compensatory off against working a public holiday.',
     'Comp-off for the weekend spent on the release.',
   ],
   lwp: ['Extended personal leave; salary deduction acknowledged.'],

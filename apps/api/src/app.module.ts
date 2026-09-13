@@ -8,6 +8,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppConfigModule } from './common/config/config.module';
 import { loadConfig } from './common/config/configuration';
 import { PrismaModule } from './common/prisma/prisma.module';
+import { TenantModule } from './common/tenant/tenant.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { FeatureGuard, JwtAuthGuard, PermissionsGuard } from './modules/auth/guards';
@@ -40,6 +41,7 @@ const config = loadConfig();
     ScheduleModule.forRoot(),
     EventEmitterModule.forRoot(),
     PrismaModule,
+    TenantModule,
     AuthModule,
     HealthModule,
     TenancyModule,

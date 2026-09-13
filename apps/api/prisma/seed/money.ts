@@ -1,15 +1,22 @@
-import {
-  BD_EARNING_COMPONENTS, BD_TAXPAYER_CATEGORIES, bdTaxConfig, computeTax,
-  fiscalYearLabel, fiscalYearStartIso,
-} from '@kormo/shared';
+import { computeTax, fiscalYearLabel, fiscalYearRange, fiscalYearStartIso } from '@kormo/shared';
 import type { TaxpayerCategory } from '@kormo/shared';
 
 import type { AttendanceResult } from './attendance';
 import type { OrgResult } from './org';
 import {
-  TODAY, addDays, chance, d, endOfMonth, iso, log, pick,
-  prisma, randInt, round2, section, startOfMonth,
+  PACK, TODAY, addDays, chance, d, endOfMonth, iso, log, pick,
+  prisma, randInt, round2, salary, section, startOfMonth,
 } from './lib';
+
+/**
+ * Tax rules for the seeded country.
+ *
+ * Every pack ships one — the UAE's is a single zero-rate band rather
+ * than an absence, so the module stays switched on and produces a "nil"
+ * statement instead of a hidden page.
+ */
+const TAX = PACK.tax!;
+const FY_START_MONTH = TAX.fiscalYearStartMonth;
 
 /** Months of payroll history to generate, ending with the month just closed. */
 const PAYROLL_MONTHS = 8;
@@ -22,30 +29,32 @@ export interface MoneyResult {
 export async function seedMoney(org: OrgResult, attendance: AttendanceResult): Promise<MoneyResult> {
   section('Tax configuration');
 
-  // ── tax configs: two fiscal years x six taxpayer categories ────────
-  const fyThis = fiscalYearLabel(TODAY);                       // e.g. 2026-27
-  const fyPrev = fiscalYearLabel(addDays(TODAY, -365));        // e.g. 2025-26
+  // ── tax configs: two fiscal years x the pack's filing categories ───
+  const fyThis = fiscalYearLabel(TODAY, FY_START_MONTH);
+  const fyPrev = fiscalYearLabel(addDays(TODAY, -365), FY_START_MONTH);
   const fiscalYears = [fyPrev, fyThis];
 
   const configIdByKey = new Map<string, number>();
+  let slabCount = 0;
   for (const fy of fiscalYears) {
-    for (const category of BD_TAXPAYER_CATEGORIES) {
-      const spec = bdTaxConfig(fy, category);
-      const startYear = Number(fy.slice(0, 4));
+    for (const category of TAX.categories) {
+      const spec = TAX.buildConfig(fy, category);
+      const { start, end } = fiscalYearRange(fy, FY_START_MONTH);
       const config = await prisma.taxConfig.create({
         data: {
-          country: 'BD',
+          country: PACK.code,
           fiscalYear: fy,
           category,
           nonTaxableDivisor: spec.nonTaxableDivisor,
           nonTaxableCap: spec.nonTaxableCap,
+          nonTaxableFlat: spec.nonTaxableFlat ?? null,
           investmentAllowancePct: spec.investmentAllowancePct,
           rebatePct: spec.rebatePct,
           minimumTax: spec.minimumTax,
-          effectiveFrom: d(`${startYear}-07-01`),
-          effectiveTo: d(`${startYear + 1}-06-30`),
+          effectiveFrom: d(start),
+          effectiveTo: d(end),
           notes:
-            'Slabs and the exemption arithmetic are data, not code — the NBR revises them every budget. '
+            `Slabs and the exemption arithmetic are data, not code — ${TAX.authority} revises them. `
             + 'Supersede a year by adding a new row rather than editing this one.',
           slabs: {
             create: spec.slabs.map((s) => ({
@@ -58,10 +67,11 @@ export async function seedMoney(org: OrgResult, attendance: AttendanceResult): P
         },
       });
       configIdByKey.set(`${fy}:${category}`, config.id);
+      slabCount += spec.slabs.length;
     }
   }
-  log('created tax configs', `${fiscalYears.length} fiscal years x ${BD_TAXPAYER_CATEGORIES.length} categories`);
-  log('created tax slabs', `${fiscalYears.length * BD_TAXPAYER_CATEGORIES.length * 6} bands`);
+  log('created tax configs', `${fiscalYears.length} fiscal years x ${TAX.categories.length} categories`);
+  log('created tax slabs', `${slabCount} bands — ${TAX.authority}`);
 
   // ── inputs the engine needs, per employee ──────────────────────────
   const salaryHistory = await prisma.salaryHistory.findMany({
@@ -99,7 +109,7 @@ export async function seedMoney(org: OrgResult, attendance: AttendanceResult): P
         // month of gross, not an implausible multiple of it.
         ? round2((emp.gross * randInt(3, 12)) / 12)
         : 0,
-      advanceIncomeTax: !pinned && benefit?.advanceIncomeTax ? randInt(2, 15) * 1_000 : 0,
+      advanceIncomeTax: !pinned && benefit?.advanceIncomeTax ? salary(randInt(2, 15) * 1_000) : 0,
     });
   }
 
@@ -140,7 +150,7 @@ export async function seedMoney(org: OrgResult, attendance: AttendanceResult): P
 
     // Salary is disbursed in the first working days of the following month.
     const salaryDate = addDays(endOfMonth(monthDate), 3);
-    const fy = fiscalYearLabel(monthDate);
+    const fy = fiscalYearLabel(monthDate, FY_START_MONTH);
 
     const run = await prisma.payrollRun.create({
       data: {
@@ -177,8 +187,8 @@ export async function seedMoney(org: OrgResult, attendance: AttendanceResult): P
 
       const basicAllowance = round2(basic + houseRent);
       const cam = round2(conveyance + medical);
-      const transportAllowance = benefit?.isTransportUser ? 2_500 : 0;
-      const mobileBill = benefit?.hasMobileAllowance ? 1_000 : 0;
+      const transportAllowance = benefit?.isTransportUser ? salary(2_500) : 0;
+      const mobileBill = benefit?.hasMobileAllowance ? salary(1_000) : 0;
       const bonusAmount = month === bonusMonth && benefit?.hasBonus ? gross : 0;
 
       // Overtime is paid at 2x the hourly basic rate (Labour Act).
@@ -201,15 +211,15 @@ export async function seedMoney(org: OrgResult, attendance: AttendanceResult): P
         const payments = ledger?.fy === fy ? ledger.payments : [];
 
         const computation = computeTax({
-          fiscalYearStart: fiscalYearStartIso(fy),
+          fiscalYearStart: fiscalYearStartIso(fy, FY_START_MONTH),
           segments: segmentsByEmp.get(empKey) ?? [{ effectiveFrom: iso(emp.joiningDate), gross }],
-          components: BD_EARNING_COMPONENTS,
-          bonuses: benefit.hasBonus ? [{ label: 'Festival Bonus', amount: gross }] : [],
+          components: TAX.earningComponents,
+          bonuses: benefit.hasBonus ? [{ label: 'Annual Bonus', amount: gross }] : [],
           actualInvestment: taxInputByEmp.get(empKey)!.actualInvestment,
           advanceIncomeTax: taxInputByEmp.get(empKey)!.advanceIncomeTax,
           payments,
           asOf: iso(monthDate),
-          config: bdTaxConfig(fy, category),
+          config: TAX.buildConfig(fy, category),
         });
         tax = computation.monthlyLiability;
 
@@ -265,7 +275,7 @@ export async function seedMoney(org: OrgResult, attendance: AttendanceResult): P
             { code: 'MEDICAL', label: 'Medical Allowance', amount: medical },
             ...(transportAllowance ? [{ code: 'TRANSPORT', label: 'Transport Allowance', amount: transportAllowance }] : []),
             ...(mobileBill ? [{ code: 'MOBILE', label: 'Mobile Allowance', amount: mobileBill }] : []),
-            ...(bonusAmount ? [{ code: 'BONUS', label: 'Festival Bonus', amount: bonusAmount }] : []),
+            ...(bonusAmount ? [{ code: 'BONUS', label: 'Annual Bonus', amount: bonusAmount }] : []),
             ...(overtimeAmount ? [{ code: 'OT', label: `Overtime (${round2(otMinutes / 60)} h @ 2x)`, amount: overtimeAmount }] : []),
           ],
           deductions: [
@@ -336,7 +346,7 @@ export async function seedMoney(org: OrgResult, attendance: AttendanceResult): P
     if (segments.length === 0) continue;
 
     for (const fy of fiscalYears) {
-      const fyStart = fiscalYearStartIso(fy);
+      const fyStart = fiscalYearStartIso(fy, FY_START_MONTH);
       // Nothing to compute for a year the employee had not joined.
       if (d(fyStart) < d(iso(emp.joiningDate)) && d(`${Number(fy.slice(0, 4)) + 1}-06-30`) < emp.joiningDate) continue;
 
@@ -347,14 +357,14 @@ export async function seedMoney(org: OrgResult, attendance: AttendanceResult): P
       const computation = computeTax({
         fiscalYearStart: fyStart,
         segments,
-        components: BD_EARNING_COMPONENTS,
-        bonuses: benefit.hasBonus ? [{ label: 'Festival Bonus', amount: gross }] : [],
+        components: TAX.earningComponents,
+        bonuses: benefit.hasBonus ? [{ label: 'Annual Bonus', amount: gross }] : [],
         actualInvestment: taxInputByEmp.get(empKey)!.actualInvestment,
         advanceIncomeTax: taxInputByEmp.get(empKey)!.advanceIncomeTax,
         payments,
         // A closed year is evaluated at its end; the live one as of today.
         asOf: isCurrentFy ? iso(TODAY) : `${Number(fy.slice(0, 4)) + 1}-06-30`,
-        config: bdTaxConfig(fy, category),
+        config: TAX.buildConfig(fy, category),
       });
 
       if (computation.grossTimeline.length === 0) continue;
@@ -390,7 +400,7 @@ export async function seedMoney(org: OrgResult, attendance: AttendanceResult): P
   if (sample) {
     log(
       'sample statement',
-      `earning ${sample.totalEarning.toLocaleString()} → taxable ${sample.taxable.toLocaleString()} → liability ${sample.liability.toLocaleString()} BDT`,
+      `earning ${sample.totalEarning.toLocaleString()} → taxable ${sample.taxable.toLocaleString()} → liability ${sample.liability.toLocaleString()} ${PACK.currency.code}`,
     );
   }
 

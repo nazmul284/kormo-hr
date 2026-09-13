@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { TenantContextService } from '../../common/tenant/tenant-context.service';
 import type { SessionPrincipal } from '../../common/types';
 import {
   addDays, atLocalTime, dateOnly, endOfMonth, startOfMonth, startOfWeek, toIsoDate,
@@ -14,7 +15,10 @@ import { companyFilter } from '../../common/utils/scope';
 
 @Injectable()
 export class BookingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tenant: TenantContextService,
+  ) {}
 
   async rooms(user: SessionPrincipal, companyId?: number, locationId?: number) {
     const companyIds = companyFilter(user, companyId);
@@ -45,7 +49,8 @@ export class BookingService {
     locationId?: number,
   ) {
     const anchor = dateIso ? dateOnly(dateIso) : dateOnly(new Date());
-    const { fromDate, toDate, fromInstant, toInstant } = this.windowFor(view, anchor);
+    const { timezone } = await this.tenant.get(companyId ?? user.companyId);
+    const { fromDate, toDate, fromInstant, toInstant } = this.windowFor(view, anchor, timezone);
     const companyIds = companyFilter(user, companyId);
 
     const roomWhere: Prisma.RoomWhereInput = {
@@ -126,13 +131,14 @@ export class BookingService {
    *
    * The distinction matters: `@db.Date` columns elsewhere are anchored at
    * UTC noon, but `room_booking.startAt` is a full timestamp. Querying it
-   * with a UTC-noon anchor selects the wrong 24 hours — a booking at 15:00
-   * Dhaka lands in the neighbouring day's window and the grid silently
-   * renders empty.
+   * with a UTC-noon anchor selects the wrong 24 hours — a 15:00 booking
+   * lands in the neighbouring day's window and the grid silently renders
+   * empty. The further the tenant is from UTC, the worse it gets.
    */
   private windowFor(
     view: 'day' | 'week' | 'month',
     anchor: Date,
+    timezone: string,
   ): { fromDate: Date; toDate: Date; fromInstant: Date; toInstant: Date } {
     const bounds =
       view === 'day'
@@ -144,8 +150,8 @@ export class BookingService {
     return {
       ...bounds,
       // Local midnight on the first day, to local midnight after the last.
-      fromInstant: atLocalTime(bounds.fromDate, '00:00'),
-      toInstant: atLocalTime(addDays(bounds.toDate, 1), '00:00'),
+      fromInstant: atLocalTime(bounds.fromDate, '00:00', timezone),
+      toInstant: atLocalTime(addDays(bounds.toDate, 1), '00:00', timezone),
     };
   }
 

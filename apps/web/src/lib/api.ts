@@ -11,6 +11,13 @@
  * reuse-detection would revoke the whole session.
  */
 
+import {
+  DEMO_MODE,
+  DEMO_READ_ONLY_MESSAGE,
+  emptyDemoResponse,
+  resolveDemoResponse,
+} from './demo';
+
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api';
 
 export class ApiError extends Error {
@@ -83,6 +90,9 @@ interface RequestOptions extends Omit<RequestInit, 'body'> {
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { body, query, _retried, headers, ...rest } = options;
 
+  // In the static demo build there is no server to talk to. See lib/demo.ts.
+  if (DEMO_MODE) return demoFetch<T>(path, options);
+
   const response = await fetch(`${API_BASE}${path}${buildQuery(query)}`, {
     ...rest,
     credentials: 'include',
@@ -124,6 +134,38 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     return (await response.text()) as unknown as T;
   }
   return response.json() as Promise<T>;
+}
+
+/**
+ * Answers a request from the recorded fixture bundle.
+ *
+ * Writes are refused rather than faked. A demo that appears to approve a
+ * leave request and then forgets it on reload is worse than one that says
+ * plainly it cannot — the visitor is left unsure whether they hit a bug.
+ */
+async function demoFetch<T>(path: string, options: RequestOptions): Promise<T> {
+  const method = (options.method ?? 'GET').toUpperCase();
+
+  if (method !== 'GET') {
+    // Signing out is the one state change that works: it only clears the
+    // locally-stored role, which is all a demo session is.
+    if (path === '/auth/logout') return undefined as T;
+    throw new ApiError(403, DEMO_READ_ONLY_MESSAGE);
+  }
+
+  const search = buildQuery(options.query);
+  const { hit, data } = await resolveDemoResponse(path, search);
+
+  if (!hit) {
+    // An unrecorded endpoint renders as an empty state rather than an
+    // error banner. The route still works; it just has nothing to show.
+    if (path.startsWith('/auth/')) {
+      throw new ApiError(401, 'Not signed in to the demo.');
+    }
+    return emptyDemoResponse() as T;
+  }
+
+  return data as T;
 }
 
 export const api = {

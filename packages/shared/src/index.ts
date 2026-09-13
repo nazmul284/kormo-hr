@@ -1,7 +1,11 @@
+// ── localisation ──────────────────────────────────────────────────────
+// Country packs carry everything that differs between jurisdictions:
+// currency, weekend, holidays, tax rules, identifier formats.
+export * from './locale';
+
 // ── tax ───────────────────────────────────────────────────────────────
 export * from './tax/types';
 export * from './tax/engine';
-export * from './tax/bd-presets';
 
 // ── leave ─────────────────────────────────────────────────────────────
 export * from './leave/day-math';

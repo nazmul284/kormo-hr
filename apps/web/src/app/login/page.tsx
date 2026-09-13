@@ -12,6 +12,7 @@ import { LogoMark } from '@/components/layout/logo';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { ApiError, api } from '@/lib/api';
+import { DEMO_MODE, setDemoRole } from '@/lib/demo';
 import type { SessionUser } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -39,7 +40,7 @@ const TIMELINE = [
   {
     icon: Fingerprint,
     title: 'Clocked in at 09:44',
-    meta: 'General shift · Head Office — Banani',
+    meta: 'General shift · Head Office',
     hue: '#2DBE8A',
   },
   {
@@ -51,7 +52,9 @@ const TIMELINE = [
   {
     icon: Receipt,
     title: 'August payslip ready',
-    meta: 'Net ৳2,95,744 after ৳96,392 tax',
+    // Deliberately currency-free: the sign-in page renders before there
+    // is a session, so there is no tenant yet to know what to render it in.
+    meta: 'Net pay confirmed, tax deducted at source',
     hue: '#818CF8',
   },
   {
@@ -64,7 +67,7 @@ const TIMELINE = [
 
 const PILLARS = [
   { icon: CalendarCheck, label: 'Offer letter to clearance letter' },
-  { icon: Landmark, label: 'NBR tax slabs, rebate and AIT' },
+  { icon: Landmark, label: 'Progressive tax slabs, six country packs' },
   { icon: Building2, label: 'Many companies, one sign-in' },
 ];
 
@@ -130,8 +133,8 @@ function ShowcasePanel() {
           <span style={{ color: PANEL.accent }}>one place.</span>
         </h1>
         <p className="mt-5 text-base leading-relaxed" style={{ color: PANEL.inkSoft }}>
-          Attendance, leave, payroll and NBR tax, goals, field visits and exit —
-          for every company under one roof.
+          Attendance, leave, payroll and income tax, goals, field visits and exit —
+          for every company, in any country, under one roof.
         </p>
 
         {/* The product, shown rather than claimed. */}
@@ -220,6 +223,18 @@ function LoginForm() {
   const canSubmit = identifier.trim().length > 0 && password.length > 0;
 
   function pick(username: string) {
+    /*
+     * In the static demo there is no server to authenticate against —
+     * choosing a role selects which recorded fixture bundle the app reads
+     * from, and goes straight in. Filling a password field that can never
+     * be checked would be theatre.
+     */
+    if (DEMO_MODE) {
+      setDemoRole(username);
+      window.location.href = next.startsWith('/') ? next : '/dashboard';
+      return;
+    }
+
     setIdentifier(username);
     setPassword(DEMO_PASSWORD);
     setPicked(username);
@@ -252,12 +267,22 @@ function LoginForm() {
         </div>
 
         <div className="mt-8 lg:mt-0">
-          <h2 className="text-2xl font-semibold tracking-tight text-ink">Welcome back</h2>
+          <h2 className="text-2xl font-semibold tracking-tight text-ink">
+            {DEMO_MODE ? 'Pick a role' : 'Welcome back'}
+          </h2>
           <p className="mt-1.5 text-sm text-ink-secondary">
-            Sign in with your username, official email, or employee ID.
+            {DEMO_MODE
+              ? 'This is a read-only tour of the product. Choose whose screen you want to see — each role lands on genuinely different work.'
+              : 'Sign in with your username, official email, or employee ID.'}
           </p>
         </div>
 
+        {/*
+          * The static demo has no server to authenticate against, so the
+          * credential form is not rendered at all. Showing a disabled one
+          * would invite people to try it and wonder what they got wrong.
+          */}
+        {DEMO_MODE ? null : (
         <form
           className="mt-7 space-y-3.5"
           onSubmit={(event) => {
@@ -363,14 +388,17 @@ function LoginForm() {
             {!login.isPending ? <ArrowRight /> : null}
           </Button>
         </form>
+        )}
 
         {/* Demo credentials, so the seeded roles are actually reachable. */}
-        <div className="mt-9">
-          <div className="flex items-center gap-3">
-            <span className="h-px flex-1 bg-line" aria-hidden />
-            <span className="eyebrow">Or open a demo role</span>
-            <span className="h-px flex-1 bg-line" aria-hidden />
-          </div>
+        <div className={DEMO_MODE ? 'mt-7' : 'mt-9'}>
+          {DEMO_MODE ? null : (
+            <div className="flex items-center gap-3">
+              <span className="h-px flex-1 bg-line" aria-hidden />
+              <span className="eyebrow">Or open a demo role</span>
+              <span className="h-px flex-1 bg-line" aria-hidden />
+            </div>
+          )}
 
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
             {DEMO_ACCOUNTS.map((account) => (
@@ -401,13 +429,33 @@ function LoginForm() {
             ))}
           </div>
 
-          <p className="mt-3 flex items-center gap-1.5 text-2xs text-ink-muted">
-            <ShieldCheck className="size-3.5 shrink-0" aria-hidden />
-            Every demo account uses the password
-            <code className="rounded-md bg-surface-sunken px-1.5 py-0.5 font-mono text-ink-secondary">
-              {DEMO_PASSWORD}
-            </code>
-          </p>
+          {DEMO_MODE ? (
+            <p className="mt-3 flex items-start gap-1.5 text-2xs text-ink-muted">
+              <ShieldCheck className="mt-px size-3.5 shrink-0" aria-hidden />
+              <span>
+                Everything here is generated demo data — no real people, and every
+                phone number is from a range reserved for fiction. Approvals and
+                edits are disabled;{' '}
+                <a
+                  className="font-medium text-brand underline underline-offset-2"
+                  href="https://github.com/nazmul284/kormo-hr#quick-start"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  run it locally
+                </a>{' '}
+                to try the write paths.
+              </span>
+            </p>
+          ) : (
+            <p className="mt-3 flex items-center gap-1.5 text-2xs text-ink-muted">
+              <ShieldCheck className="size-3.5 shrink-0" aria-hidden />
+              Every demo account uses the password
+              <code className="rounded-md bg-surface-sunken px-1.5 py-0.5 font-mono text-ink-secondary">
+                {DEMO_PASSWORD}
+              </code>
+            </p>
+          )}
         </div>
       </div>
     </div>

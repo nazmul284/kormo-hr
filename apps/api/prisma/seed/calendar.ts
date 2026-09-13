@@ -1,9 +1,8 @@
-import { BD_WEEKEND_DAYS } from '@kormo/shared';
 import type { Shift } from '@prisma/client';
 
 import type { OrgResult } from './org';
 import {
-  TODAY, addDays, chance, d, eachDay, endOfMonth, iso, isWeekendBd, log, pick,
+  PACK, TODAY, addDays, chance, d, eachDay, endOfMonth, iso, isWeekend, log, pick,
   prisma, randInt, section, startOfMonth,
 } from './lib';
 
@@ -26,54 +25,17 @@ export interface CalendarResult {
   rosterByEmployee: Map<string, Map<string, { shiftId: number | null; isWeekend: boolean; isConditionalWeekend: boolean }>>;
 }
 
-// ── Bangladesh public holiday calendar ────────────────────────────────
-// Islamic dates are lunar and confirmed only days ahead by the government;
-// these are the conventional gazetted spans for each year.
-const HOLIDAYS: Record<number, { name: string; start: string; end?: string; description?: string; religion?: string; optional?: boolean }[]> = {
-  2025: [
-    { name: 'Shaheed Dibosh & International Mother Language Day', start: '2025-02-21' },
-    { name: 'Independence & National Day', start: '2025-03-26' },
-    { name: 'Eid-ul-Fitr', start: '2025-03-28', end: '2025-04-01', religion: 'Islam', description: 'Eid holiday including Shab-e-Qadr and pre/post Eid days' },
-    { name: 'Pahela Baishakh — Bengali New Year', start: '2025-04-14' },
-    { name: 'May Day', start: '2025-05-01' },
-    { name: 'Eid-ul-Azha', start: '2025-06-05', end: '2025-06-10', religion: 'Islam' },
-    { name: 'Ashura', start: '2025-07-06', religion: 'Islam' },
-    { name: 'Janmashtami', start: '2025-08-16', religion: 'Hinduism' },
-    { name: 'Eid-e-Miladunnabi', start: '2025-09-05', religion: 'Islam' },
-    { name: 'Durga Puja — Vijaya Dashami', start: '2025-10-01', end: '2025-10-02', religion: 'Hinduism' },
-    { name: 'Victory Day', start: '2025-12-16' },
-    { name: 'Christmas Day', start: '2025-12-25', religion: 'Christianity' },
-  ],
-  2026: [
-    { name: 'Shaheed Dibosh & International Mother Language Day', start: '2026-02-21' },
-    { name: 'Eid-ul-Fitr', start: '2026-03-17', end: '2026-03-21', religion: 'Islam', description: 'Eid holiday including pre/post Eid days' },
-    { name: 'Independence & National Day', start: '2026-03-26' },
-    { name: 'Pahela Baishakh — Bengali New Year', start: '2026-04-14' },
-    { name: 'May Day', start: '2026-05-01' },
-    { name: 'Eid-ul-Azha', start: '2026-05-26', end: '2026-05-30', religion: 'Islam' },
-    { name: 'Ashura', start: '2026-06-25', religion: 'Islam' },
-    { name: 'Eid-e-Miladunnabi', start: '2026-08-25', religion: 'Islam' },
-    { name: 'Janmashtami', start: '2026-09-04', religion: 'Hinduism' },
-    { name: 'Durga Puja — Vijaya Dashami', start: '2026-10-20', end: '2026-10-21', religion: 'Hinduism' },
-    { name: 'Buddha Purnima', start: '2026-05-11', religion: 'Buddhism', optional: true },
-    { name: 'Victory Day', start: '2026-12-16' },
-    { name: 'Christmas Day', start: '2026-12-25', religion: 'Christianity' },
-  ],
-  2027: [
-    { name: 'Shaheed Dibosh & International Mother Language Day', start: '2027-02-21' },
-    { name: 'Eid-ul-Fitr', start: '2027-03-07', end: '2027-03-11', religion: 'Islam' },
-    { name: 'Independence & National Day', start: '2027-03-26' },
-    { name: 'Pahela Baishakh — Bengali New Year', start: '2027-04-14' },
-    { name: 'May Day', start: '2027-05-01' },
-    { name: 'Eid-ul-Azha', start: '2027-05-16', end: '2027-05-20', religion: 'Islam' },
-    { name: 'Ashura', start: '2027-06-15', religion: 'Islam' },
-    { name: 'Eid-e-Miladunnabi', start: '2027-08-14', religion: 'Islam' },
-    { name: 'Janmashtami', start: '2027-08-25', religion: 'Hinduism' },
-    { name: 'Durga Puja — Vijaya Dashami', start: '2027-10-09', religion: 'Hinduism' },
-    { name: 'Victory Day', start: '2027-12-16' },
-    { name: 'Christmas Day', start: '2027-12-25', religion: 'Christianity' },
-  ],
-};
+/**
+ * Public holidays come from the tenant's country pack, which ships a
+ * table per calendar year. Only the years the seed window actually
+ * touches are written, so switching SEED_TODAY does not silently import
+ * a decade of holidays nobody will look at.
+ */
+const HOLIDAYS = PACK.holidays;
+
+/** The weekend, and the single day off for six-day patterns. */
+const WEEKEND_DAYS = PACK.weekendDays;
+const SINGLE_OFF_DAY = WEEKEND_DAYS[0];
 
 const SHIFT_SPEC = [
   { name: 'General', startTime: '10:00', endTime: '19:00', graceMinutes: 15, breakMinutes: 60, isNightShift: false, colorHex: '#4F46E5' },
@@ -110,22 +72,22 @@ export async function seedCalendar(org: OrgResult): Promise<CalendarResult> {
     const officeRoster = await prisma.attendanceRoster.create({
       data: {
         companyId: company.id,
-        name: 'Office — Sun to Thu',
-        rotationPattern: { weekends: BD_WEEKEND_DAYS, cycle: ['General'] },
+        name: `Office — ${PACK.workWeekLabel}`,
+        rotationPattern: { weekends: WEEKEND_DAYS, cycle: ['General'] },
       },
     });
     await prisma.attendanceRoster.create({
       data: {
         companyId: company.id,
         name: 'Warehouse — rotating 3 shift',
-        rotationPattern: { weekends: [5], cycle: ['Morning', 'Evening', 'Night'], rotateEveryDays: 7 },
+        rotationPattern: { weekends: [SINGLE_OFF_DAY], cycle: ['Morning', 'Evening', 'Night'], rotateEveryDays: 7 },
       },
     });
     await prisma.attendanceRoster.create({
       data: {
         companyId: company.id,
         name: 'Field Force — 6 day',
-        rotationPattern: { weekends: [5], cycle: ['Field'] },
+        rotationPattern: { weekends: [SINGLE_OFF_DAY], cycle: ['Field'] },
       },
     });
     rosterIdByCompany.set(company.id, officeRoster.id);
@@ -163,7 +125,7 @@ export async function seedCalendar(org: OrgResult): Promise<CalendarResult> {
       }
     }
   }
-  log('created holidays', `${holidayCount} rows across 2025-2027`);
+  log('created holidays', `${holidayCount} rows — ${PACK.name} calendar`);
 
   // ── roster assignments ─────────────────────────────────────────────
   // One row per employee per day: which shift, and whether it is an off day.
@@ -185,7 +147,7 @@ export async function seedCalendar(org: OrgResult): Promise<CalendarResult> {
     const rotating = companyShifts.filter((s) => ['Morning', 'Evening', 'Night'].includes(s.name));
 
     // Warehouse and field staff work non-office patterns.
-    const isWarehouse = emp.locationId === org.locations.find((l) => l.alias === 'WH-TEJGAON')?.id;
+    const isWarehouse = emp.locationId === org.locations.find((l) => l.alias === 'WH-MAIN')?.id;
     const isField = org.departments.find((x) => x.id === emp.departmentId)?.name === 'Field Force';
 
     const perDay = new Map<string, { shiftId: number | null; isWeekend: boolean; isConditionalWeekend: boolean }>();
@@ -202,18 +164,22 @@ export async function seedCalendar(org: OrgResult): Promise<CalendarResult> {
         // Rotating three-shift pattern, changing every seven days.
         const weekIndex = Math.floor((day.getTime() - WINDOW_START.getTime()) / (7 * 86_400_000));
         shiftId = rotating[weekIndex % rotating.length].id;
-        isWeekend = dow === 5; // single day off
+        isWeekend = dow === SINGLE_OFF_DAY; // single day off
       } else if (isField) {
         shiftId = field.id;
-        isWeekend = dow === 5;
+        isWeekend = dow === SINGLE_OFF_DAY;
       } else {
         shiftId = general.id;
-        isWeekend = BD_WEEKEND_DAYS.includes(dow);
+        isWeekend = WEEKEND_DAYS.includes(dow);
       }
 
-      // A few Saturdays are "conditional" weekends — worked if the month's
-      // targets slipped. Exercises the CONDITIONAL_WEEKEND status.
-      const isConditionalWeekend = !isWarehouse && !isField && dow === 6 && day.getUTCDate() <= 7;
+      // A few weekend days each month are "conditional" — worked if the
+      // month's targets slipped. Exercises the CONDITIONAL_WEEKEND status.
+      // Always the second weekend day, so a five-day week keeps one
+      // genuinely free day.
+      const isConditionalWeekend =
+        !isWarehouse && !isField && dow === WEEKEND_DAYS[WEEKEND_DAYS.length - 1]
+        && day.getUTCDate() <= 7;
 
       perDay.set(key, { shiftId, isWeekend, isConditionalWeekend });
       assignmentRows.push({

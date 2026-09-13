@@ -1,40 +1,30 @@
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
+import { activeLocale } from './locale';
+
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
 
 // ── formatting ────────────────────────────────────────────────────────
 
-/** Bangladeshi taka. Uses the en-IN grouping (lakh/crore) that BDT follows. */
-export function formatMoney(
-  value: number | string | null | undefined,
-  options: { decimals?: boolean; symbol?: boolean } = {},
-): string {
-  const amount = Number(value ?? 0);
-  if (!Number.isFinite(amount)) return '—';
-  const formatted = amount.toLocaleString('en-IN', {
-    minimumFractionDigits: options.decimals ? 2 : 0,
-    maximumFractionDigits: options.decimals ? 2 : 0,
-  });
-  return options.symbol === false ? formatted : `৳${formatted}`;
-}
-
-/** Compact form for tiles: ৳12.4L, ৳1.2Cr. */
-export function formatMoneyCompact(value: number | string | null | undefined): string {
-  const amount = Number(value ?? 0);
-  if (!Number.isFinite(amount)) return '—';
-  if (Math.abs(amount) >= 10_000_000) return `৳${(amount / 10_000_000).toFixed(2)}Cr`;
-  if (Math.abs(amount) >= 100_000) return `৳${(amount / 100_000).toFixed(2)}L`;
-  if (Math.abs(amount) >= 1_000) return `৳${(amount / 1_000).toFixed(1)}k`;
-  return `৳${amount.toFixed(0)}`;
-}
+/**
+ * Money, dates and clock times all render in the signed-in tenant's
+ * settings — see `lib/locale.ts` for why those live in a module value
+ * rather than React context.
+ */
+export {
+  formatMoney,
+  formatMoneyCompact,
+  isWeekendDay,
+  activeCurrency,
+} from './locale';
 
 export function formatNumber(value: number | null | undefined, decimals = 0): string {
   const amount = Number(value ?? 0);
   if (!Number.isFinite(amount)) return '—';
-  return amount.toLocaleString('en-US', {
+  return amount.toLocaleString(activeLocale().locale, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
@@ -55,8 +45,6 @@ export function formatPercent(value: number | null | undefined, decimals = 1): s
 
 // ── dates ─────────────────────────────────────────────────────────────
 
-const DHAKA = 'Asia/Dhaka';
-
 export function formatDate(
   value: string | Date | null | undefined,
   style: 'short' | 'medium' | 'long' | 'iso' = 'medium',
@@ -67,7 +55,7 @@ export function formatDate(
 
   if (style === 'iso') return date.toISOString().slice(0, 10);
 
-  return date.toLocaleDateString('en-GB', {
+  return date.toLocaleDateString(activeLocale().locale, {
     timeZone: 'UTC', // stored dates are UTC-noon anchored calendar days
     day: '2-digit',
     month: style === 'short' ? 'short' : style === 'long' ? 'long' : 'short',
@@ -75,13 +63,19 @@ export function formatDate(
   });
 }
 
-/** Clock time in the tenant's timezone. */
+/**
+ * Clock time in the tenant's timezone.
+ *
+ * A stored in-time is an instant, so it has to be rendered in the
+ * timezone the office actually keeps — otherwise an employee in Dubai
+ * reads their 09:00 arrival as 05:00 and files a correction request.
+ */
 export function formatTime(value: string | Date | null | undefined): string {
   if (!value) return '—';
   const date = typeof value === 'string' ? new Date(value) : value;
   if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleTimeString('en-GB', {
-    timeZone: DHAKA,
+    timeZone: activeLocale().timezone,
     hour: '2-digit',
     minute: '2-digit',
   });

@@ -14,7 +14,11 @@ export interface HolidaySpan {
 }
 
 export interface LeaveDayOptions {
-  /** Weekday numbers treated as the weekend. 0=Sun … 6=Sat. Bangladesh: [5,6]. */
+  /**
+   * Weekday numbers treated as the weekend. 0 = Sun … 6 = Sat.
+   * Comes from the tenant's country pack — [6,0] in most of the world,
+   * [5,6] in Bangladesh, [4,5] where the week still ends on Thursday.
+   */
   weekendDays?: number[];
   /** Holiday spans that fall inside or across the requested range. */
   holidays?: HolidaySpan[];
@@ -95,7 +99,7 @@ export function computeLeaveDays(
   endIso: string,
   options: LeaveDayOptions = {},
 ): LeaveDayResult {
-  const weekendDays = options.weekendDays ?? [5, 6]; // Fri, Sat
+  const weekendDays = options.weekendDays ?? [6, 0]; // Sat, Sun
   const holidayMap = expandHolidays(
     (options.holidays ?? []) as (HolidaySpan & { name?: string })[],
   );

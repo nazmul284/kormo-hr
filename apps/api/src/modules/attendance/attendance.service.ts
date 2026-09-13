@@ -6,6 +6,7 @@ import type { Prisma } from '@prisma/client';
 
 import { paginate } from '../../common/dto/pagination.dto';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { TenantContextService } from '../../common/tenant/tenant-context.service';
 import type { SessionPrincipal } from '../../common/types';
 import {
   addDays, atLocalTime, dateOnly, endOfMonth, monthWindow, startOfMonth, startOfWeek, toIsoDate,
@@ -22,7 +23,10 @@ const WORKING_STATUSES = ['PRESENT', 'LATE', 'ABSENT', 'AFL', 'LEAVE', 'HALF_DAY
 
 @Injectable()
 export class AttendanceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tenant: TenantContextService,
+  ) {}
 
   /** Resolves an optional employeeId param, defaulting to the caller. */
   private async resolveTarget(user: SessionPrincipal, employeeId?: string): Promise<bigint> {
@@ -184,7 +188,14 @@ export class AttendanceService {
   /** Current-week totals for the dashboard stats widget. */
   async currentWeek(user: SessionPrincipal, employeeId?: bigint) {
     const targetId = employeeId ?? user.id;
-    const weekStart = startOfWeek(new Date());
+    const { weekendDays } = await this.tenant.get(user.companyId);
+    // Start the week on the day after the last weekend day, so the grid
+    // shows a run of working days followed by the weekend rather than
+    // splitting the weekend across two rows.
+    const weekStartsOn = weekendDays.length > 0
+      ? (weekendDays[weekendDays.length - 1] + 1) % 7
+      : 0;
+    const weekStart = startOfWeek(new Date(), weekStartsOn);
     const weekEnd = addDays(weekStart, 6);
 
     const rows = await this.prisma.attendance.findMany({
@@ -300,8 +311,9 @@ export class AttendanceService {
       throw new BadRequestException('A correction request for that day is already awaiting approval.');
     }
 
-    const requestedInTime = dto.requestedInTime ? atLocalTime(date, dto.requestedInTime) : attendance.inTime;
-    const requestedOutTime = dto.requestedOutTime ? atLocalTime(date, dto.requestedOutTime) : attendance.outTime;
+    const { timezone } = await this.tenant.get(user.companyId);
+    const requestedInTime = dto.requestedInTime ? atLocalTime(date, dto.requestedInTime, timezone) : attendance.inTime;
+    const requestedOutTime = dto.requestedOutTime ? atLocalTime(date, dto.requestedOutTime, timezone) : attendance.outTime;
 
     if (requestedInTime && requestedOutTime && requestedOutTime <= requestedInTime) {
       // Overnight shifts legitimately end "before" they start on the clock;
@@ -605,8 +617,9 @@ export class AttendanceService {
 
   async createOvertimeRequest(user: SessionPrincipal, dto: OvertimeRequestDto) {
     const date = dateOnly(dto.date);
-    const from = atLocalTime(date, dto.fromTime);
-    let to = atLocalTime(date, dto.toTime);
+    const { timezone } = await this.tenant.get(user.companyId);
+    const from = atLocalTime(date, dto.fromTime, timezone);
+    let to = atLocalTime(date, dto.toTime, timezone);
     // Overtime running past midnight is normal for warehouse shifts.
     if (to <= from) to = addDays(to, 1);
 

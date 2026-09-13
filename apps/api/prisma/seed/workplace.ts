@@ -1,9 +1,10 @@
+import { formatMoney } from '@kormo/shared';
 import type { Room } from '@prisma/client';
 
 import type { OrgResult } from './org';
 import {
-  TODAY, addDays, atTime, chance, d, eachDay, iso, isWeekendBd, log, pick, pickN,
-  prisma, randInt, round2, section,
+  DEMO, PACK, TODAY, addDays, atTime, chance, d, eachDay, iso, isWeekend, log,
+  phone, pick, pickN, prisma, randInt, round2, salary, section,
 } from './lib';
 
 /** Food programme, room booking, notices, policies, notifications, helpdesk. */
@@ -15,8 +16,8 @@ export async function seedWorkplace(org: OrgResult): Promise<void> {
     data: {
       companyId: org.primaryCompanyId,
       name: 'Kormo Lunch Management',
-      selfCost: 40,      // employee's subsidised share
-      guestCost: 180,    // full chargeable rate
+      selfCost: salary(40),      // employee's subsidised share
+      guestCost: salary(180),    // full chargeable rate
       cancelCutoff: '09:30',
     },
   });
@@ -41,11 +42,11 @@ export async function seedWorkplace(org: OrgResult): Promise<void> {
       },
     });
   }
-  log('created food programme', `${program.name} — self ৳${program.selfCost}, guest ৳${program.guestCost}`);
+  log('created food programme', `${program.name} — self ${PACK.currency.symbol}${program.selfCost}, guest ${PACK.currency.symbol}${program.guestCost}`);
   log('created rotating weekly menu', `${Object.keys(WEEKLY_MENU).length} day templates`);
 
   // ── subscriptions ──────────────────────────────────────────────────
-  const hoLocationId = org.locations.find((l) => l.alias === 'HO-BANANI')?.id;
+  const hoLocationId = org.locations.find((l) => l.alias === 'HO-MAIN')?.id;
   const eligible = org.employees.filter(
     (e) => e.companyId === org.primaryCompanyId && e.locationId === hoLocationId,
   );
@@ -85,7 +86,7 @@ export async function seedWorkplace(org: OrgResult): Promise<void> {
   for (const emp of subscribers) {
     for (const day of eachDay(addDays(TODAY, -90), TODAY)) {
       if (day < emp.joiningDate) continue;
-      if (isWeekendBd(day)) continue;
+      if (isWeekend(day)) continue;
       if (holidaySet.has(iso(day))) continue;
 
       const menu = WEEKLY_MENU[day.getUTCDay()];
@@ -128,12 +129,12 @@ export async function seedWorkplace(org: OrgResult): Promise<void> {
   section('Room booking');
 
   const ROOMS = [
-    { name: 'Boardroom', floor: '7th', capacity: 16, amenities: ['Projector', 'VC', 'Whiteboard', 'Speakerphone'], colorHex: '#4F46E5' },
-    { name: 'Focus Room A', floor: '6th', capacity: 4, amenities: ['Whiteboard'], colorHex: '#0EA5E9' },
-    { name: 'Focus Room B', floor: '6th', capacity: 4, amenities: ['Whiteboard'], colorHex: '#14B8A6' },
-    { name: 'Training Room', floor: '5th', capacity: 30, amenities: ['Projector', 'Sound system', 'Whiteboard'], colorHex: '#F59E0B' },
-    { name: 'Interview Room', floor: '5th', capacity: 6, amenities: ['VC'], colorHex: '#8B5CF6' },
-    { name: 'Huddle Space', floor: '7th', capacity: 8, amenities: ['TV', 'Whiteboard'], colorHex: '#EC4899' },
+    { name: 'Boardroom', floor: DEMO.floorLabels[4], capacity: 16, amenities: ['Projector', 'VC', 'Whiteboard', 'Speakerphone'], colorHex: '#4F46E5' },
+    { name: 'Focus Room A', floor: DEMO.floorLabels[3], capacity: 4, amenities: ['Whiteboard'], colorHex: '#0EA5E9' },
+    { name: 'Focus Room B', floor: DEMO.floorLabels[3], capacity: 4, amenities: ['Whiteboard'], colorHex: '#14B8A6' },
+    { name: 'Training Room', floor: DEMO.floorLabels[2], capacity: 30, amenities: ['Projector', 'Sound system', 'Whiteboard'], colorHex: '#F59E0B' },
+    { name: 'Interview Room', floor: DEMO.floorLabels[2], capacity: 6, amenities: ['VC'], colorHex: '#8B5CF6' },
+    { name: 'Huddle Space', floor: DEMO.floorLabels[4], capacity: 8, amenities: ['TV', 'Whiteboard'], colorHex: '#EC4899' },
   ];
   const rooms: Room[] = [];
   for (const spec of ROOMS) {
@@ -167,9 +168,13 @@ export async function seedWorkplace(org: OrgResult): Promise<void> {
   const md = org.employees.find((e) => e.username === 'md')!;
   const seriesId = 'series-leadership-weekly';
   for (let w = -6; w <= 4; w++) {
-    // Every Sunday at 10:00 — the start of the Bangladeshi work week.
+    // 10:00 on the first working day of each week, whichever day the
+    // tenant's country pack makes that.
+    const firstWorkday = PACK.weekendDays.length > 0
+      ? (PACK.weekendDays[PACK.weekendDays.length - 1] + 1) % 7
+      : 1;
     const base = addDays(TODAY, w * 7);
-    const sunday = addDays(base, (7 - base.getUTCDay()) % 7);
+    const sunday = addDays(base, (firstWorkday - base.getUTCDay() + 7) % 7);
     bookingRows.push({
       roomId: boardroom.id,
       organiserId: md.id,
@@ -197,7 +202,7 @@ export async function seedWorkplace(org: OrgResult): Promise<void> {
   for (const b of bookingRows) isFree(b.roomId, b.startAt, b.endAt);
 
   for (const day of eachDay(addDays(TODAY, -14), addDays(TODAY, 14))) {
-    if (isWeekendBd(day)) continue;
+    if (isWeekend(day)) continue;
     if (holidaySet.has(iso(day))) continue;
 
     for (let i = 0; i < randInt(3, 9); i++) {
@@ -264,10 +269,37 @@ export async function seedWorkplace(org: OrgResult): Promise<void> {
   const hrAdmin = org.employees.find((e) => e.username === 'hr.admin')!;
   const itAdmin = org.employees.find((e) => e.username === 'admin')!;
 
+  /*
+   * Pick the pack's longest holiday in the seeded year for the closure
+   * notice, so the notice board reads like the country's own calendar
+   * rather than quoting a festival that is not on it.
+   */
+  const holidayNotice = (PACK.holidays[TODAY.getUTCFullYear()] ?? [])
+    .map((h) => ({
+      ...h,
+      days: Math.round((d(h.end ?? h.start).getTime() - d(h.start).getTime()) / 86_400_000) + 1,
+    }))
+    .filter((h) => !h.optional)
+    .sort((a, b) => b.days - a.days || a.start.localeCompare(b.start))[0];
+
+  /** "24 December" — a notice is prose, so it should not carry ISO dates. */
+  const readable = (isoDate: string) =>
+    d(isoDate).toLocaleDateString('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'long' });
+
+  const closureSpan = holidayNotice
+    ? holidayNotice.end && holidayNotice.end !== holidayNotice.start
+      ? `from ${readable(holidayNotice.start)} to ${readable(holidayNotice.end)}`
+      : `on ${readable(holidayNotice.start)}`
+    : 'over the next public holiday';
+
   const NOTICES = [
     {
-      title: 'Eid-ul-Azha holiday schedule',
-      body: 'The office will remain closed from 26 to 30 May for Eid-ul-Azha. The warehouse will run a skeleton dispatch crew on 27 and 28 May; those rostered will be granted compensatory leave. Please complete all approvals before 25 May.',
+      title: `${holidayNotice?.name ?? 'Public holiday'} — closure schedule`,
+      body:
+        `The office will remain closed ${closureSpan}. The warehouse will run a `
+        + 'skeleton dispatch crew for the first two days; those rostered will be '
+        + 'granted compensatory leave. Please complete all approvals before the '
+        + 'closure begins.',
       isPinned: true, daysAgo: 6,
     },
     {
@@ -368,7 +400,7 @@ export async function seedWorkplace(org: OrgResult): Promise<void> {
       employeeId: slip.employeeId,
       kind: 'PAYROLL',
       title: 'Your payslip is ready',
-      body: `Net payable ৳${Number(slip.netPayable).toLocaleString('en-US')} for ${slip.month}/${slip.year}.`,
+      body: `Net payable ${formatMoney(Number(slip.netPayable), PACK.currency)} for ${slip.month}/${slip.year}.`,
       link: '/payroll',
       entityType: 'payslip',
       entityId: String(slip.id),
@@ -401,8 +433,8 @@ export async function seedWorkplace(org: OrgResult): Promise<void> {
     notificationRows.push({
       employeeId: emp.id,
       kind: 'ANNOUNCEMENT',
-      title: 'Eid-ul-Azha holiday schedule',
-      body: 'Office closed 26–30 May. Check the notice board for details.',
+      title: `${holidayNotice?.name ?? 'Public holiday'} — closure schedule`,
+      body: `Office closed ${closureSpan}. Check the notice board for details.`,
       link: '/dashboard',
       entityType: 'notice',
       entityId: '1',
@@ -480,11 +512,11 @@ export async function seedWorkplace(org: OrgResult): Promise<void> {
         fieldPath: field.fieldPath,
         currentValue: field.fieldPath === 'maritalStatus' ? 'SINGLE' : 'previous value on record',
         requestedValue:
-          field.fieldPath === 'personalEmail' ? `${emp.username}.new@gmail.example`
-          : field.fieldPath === 'alternateNumber' ? `018${randInt(10_000_000, 99_999_999)}`
+          field.fieldPath === 'personalEmail' ? `${emp.username}.new@personal.example`
+          : field.fieldPath === 'alternateNumber' ? phone()
           : field.fieldPath === 'maritalStatus' ? 'MARRIED'
           : field.fieldPath === 'spouseName' ? 'Name as per marriage certificate'
-          : `House ${randInt(1, 90)}, Road ${randInt(1, 30)}, Banani, Dhaka`,
+          : `Building ${randInt(1, 90)}, Street ${randInt(1, 30)}, ${DEMO.areas[0]}, ${DEMO.headOffice.city}`,
         reason: pick([
           'Recently changed — please update my record.',
           'Correcting an error made during onboarding.',

@@ -1,9 +1,9 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
-  BD_CATEGORY_LABELS, BD_EARNING_COMPONENTS, PERMISSIONS, computeTax, fiscalYearLabel,
-  fiscalYearRange, fiscalYearStartIso, initials,
+  PERMISSIONS, computeTax, fiscalYearLabel, fiscalYearRange, fiscalYearStartIso,
+  getCountryPack, initials,
 } from '@kormo/shared';
-import type { TaxConfigInput, TaxpayerCategory } from '@kormo/shared';
+import type { CountryPack, TaxConfigInput, TaxpayerCategory } from '@kormo/shared';
 
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { SessionPrincipal } from '../../common/types';
@@ -14,6 +14,44 @@ import { toIsoDate } from '../../common/utils/dates';
 @Injectable()
 export class TaxService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * The tenant's country pack, plus the fiscal-year month it actually
+   * runs on.
+   *
+   * Every figure on this page is jurisdiction-specific — which slab
+   * table applies, which filing categories exist, when the tax year
+   * opens — so nothing here may assume a country. The fiscal-year month
+   * comes off the Company row rather than the pack, because a tenant is
+   * allowed to run a fiscal year its country's authority does not.
+   */
+  private async tenantPack(companyId: number): Promise<{
+    pack: CountryPack;
+    country: string;
+    fyStartMonth: number;
+  }> {
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: { country: true, fiscalYearStartMonth: true },
+    });
+    const pack = getCountryPack(company?.country);
+    return {
+      pack,
+      country: company?.country ?? pack.code,
+      fyStartMonth: company?.fiscalYearStartMonth ?? pack.tax?.fiscalYearStartMonth ?? 1,
+    };
+  }
+
+  /**
+   * Label for a filing category, from the pack that defines it.
+   *
+   * Falls back to the raw enum value rather than throwing: a tenant that
+   * switched country and still has last year's rows should render
+   * "SENIOR_CITIZEN", not a 500.
+   */
+  private categoryLabel(pack: CountryPack, category: TaxpayerCategory): string {
+    return pack.tax?.categoryLabels[category] ?? category;
+  }
 
   private async resolveTarget(user: SessionPrincipal, employeeId?: string): Promise<bigint> {
     if (!employeeId) return user.id;
@@ -27,14 +65,15 @@ export class TaxService {
   }
 
   /** Fiscal years with a published slab configuration. */
-  async fiscalYears() {
+  async fiscalYears(user: SessionPrincipal) {
+    const { country, fyStartMonth } = await this.tenantPack(user.companyId);
     const rows = await this.prisma.taxConfig.groupBy({
       by: ['fiscalYear'],
-      where: { country: 'BD', isActive: true },
+      where: { country, isActive: true },
       orderBy: { fiscalYear: 'desc' },
     });
     return {
-      current: fiscalYearLabel(new Date()),
+      current: fiscalYearLabel(new Date(), fyStartMonth),
       years: rows.map((row) => row.fiscalYear),
     };
   }
@@ -47,17 +86,19 @@ export class TaxService {
    * it is hardcoded — the engine is handed data.
    */
   private async loadConfig(
+    pack: CountryPack,
+    country: string,
     fiscalYear: string,
     category: TaxpayerCategory,
   ): Promise<TaxConfigInput> {
     const config = await this.prisma.taxConfig.findFirst({
-      where: { country: 'BD', fiscalYear, category, isActive: true },
+      where: { country, fiscalYear, category, isActive: true },
       include: { slabs: { orderBy: { seq: 'asc' } } },
     });
 
     if (!config) {
       throw new NotFoundException(
-        `No tax configuration is published for ${fiscalYear} (${BD_CATEGORY_LABELS[category]}).`,
+        `No tax configuration is published for ${fiscalYear} (${this.categoryLabel(pack, category)}).`,
       );
     }
 
@@ -66,6 +107,13 @@ export class TaxService {
       category: config.category as TaxpayerCategory,
       nonTaxableDivisor: Number(config.nonTaxableDivisor),
       nonTaxableCap: Number(config.nonTaxableCap),
+      // `undefined`, not `null`: the engine treats the key's *presence* as
+      // "this country uses a flat standard deduction", so passing null
+      // would silently switch every flat-deduction country onto the
+      // proportional branch and exempt nothing.
+      nonTaxableFlat: config.nonTaxableFlat === null
+        ? undefined
+        : Number(config.nonTaxableFlat),
       investmentAllowancePct: Number(config.investmentAllowancePct),
       rebatePct: Number(config.rebatePct),
       minimumTax: Number(config.minimumTax),
@@ -78,14 +126,37 @@ export class TaxService {
     };
   }
 
-  /** The taxpayer category to use, from the employee's own attributes. */
-  private categoryFor(employee: { gender: string | null; birthDate: Date | null }): TaxpayerCategory {
-    if (employee.birthDate) {
+  /**
+   * Picks the filing category for an employee, from those the tenant's
+   * country pack actually offers.
+   *
+   * The reliefs are opt-in per country: Bangladesh grants a wider exempt
+   * band to women and to over-65s, India to over-60s, the US and UK to
+   * neither. Each candidate is therefore checked against the pack before
+   * it is used, and the fallback is the category every pack has.
+   *
+   * Marital filing statuses are deliberately not inferred from HR data.
+   * A married employee may file separately, jointly, or as head of
+   * household; the system does not know which, and guessing produces a
+   * confidently wrong tax figure. Those categories exist for a payroll
+   * officer to set explicitly.
+   */
+  private categoryFor(
+    pack: CountryPack,
+    employee: { gender: string | null; birthDate: Date | null },
+  ): TaxpayerCategory {
+    const offered = pack.tax?.categories ?? [];
+    const has = (c: TaxpayerCategory) => offered.includes(c);
+
+    if (employee.birthDate && has('SENIOR_CITIZEN')) {
       const age = (Date.now() - employee.birthDate.getTime()) / (365.25 * 86_400_000);
-      // The NBR grants senior citizens a higher exempt band from 65.
+      // The qualifying age differs (65 in Bangladesh, 60 in India); the
+      // wider band is granted from the later of the two, so nobody is
+      // given relief they are not yet entitled to.
       if (age >= 65) return 'SENIOR_CITIZEN';
     }
-    return employee.gender === 'FEMALE' ? 'FEMALE' : 'GENERAL';
+    if (employee.gender === 'FEMALE' && has('FEMALE')) return 'FEMALE';
+    return has('GENERAL') ? 'GENERAL' : (offered[0] ?? 'GENERAL');
   }
 
   /**
@@ -96,8 +167,9 @@ export class TaxService {
    */
   async statement(user: SessionPrincipal, fiscalYear?: string, employeeId?: string) {
     const targetId = await this.resolveTarget(user, employeeId);
-    const fy = fiscalYear ?? fiscalYearLabel(new Date());
-    const { start, end } = fiscalYearRange(fy);
+    const { pack, country, fyStartMonth } = await this.tenantPack(user.companyId);
+    const fy = fiscalYear ?? fiscalYearLabel(new Date(), fyStartMonth);
+    const { start, end } = fiscalYearRange(fy, fyStartMonth);
 
     const employee = await this.prisma.employee.findUnique({
       where: { id: targetId },
@@ -132,14 +204,14 @@ export class TaxService {
       };
     }
 
-    const category = this.categoryFor(employee);
-    const config = await this.loadConfig(fy, category);
+    const category = this.categoryFor(pack, employee);
+    const config = await this.loadConfig(pack, country, fy, category);
 
     // The gross in force at the start of the fiscal year drives the
     // festival-bonus figure (one month's gross).
     const openingGross = this.grossAt(employee.salaryHistory, start);
     const bonuses = employee.benefit?.hasBonus
-      ? [{ label: 'Festival Bonus', amount: openingGross }]
+      ? [{ label: 'Annual Bonus', amount: openingGross }]
       : [];
 
     const investment = await this.declaredInvestment(targetId, fy);
@@ -150,7 +222,8 @@ export class TaxService {
         effectiveFrom: toIsoDate(row.effectiveFrom),
         gross: Number(row.gross),
       })),
-      components: BD_EARNING_COMPONENTS,
+      components: pack.tax?.earningComponents
+        ?? [{ code: 'BASIC', label: 'Basic Salary', pctOfGross: 100 }],
       bonuses,
       actualInvestment: investment.declared,
       advanceIncomeTax: investment.advanceIncomeTax,
@@ -169,7 +242,7 @@ export class TaxService {
       fiscalYearEnd: end,
       taxApplicable: true,
       category,
-      categoryLabel: BD_CATEGORY_LABELS[category],
+      categoryLabel: this.categoryLabel(pack, category),
       employee: this.employeeHeader(employee),
       /** Every intermediate step, so the number can be explained. */
       computation,
@@ -180,9 +253,13 @@ export class TaxService {
         months: row.months,
         total: row.total,
       })),
+      country: pack.code,
+      currency: pack.currency,
+      taxAuthority: pack.tax?.authority ?? null,
       config: {
         nonTaxableDivisor: config.nonTaxableDivisor,
         nonTaxableCap: config.nonTaxableCap,
+        nonTaxableFlat: config.nonTaxableFlat ?? null,
         investmentAllowancePct: config.investmentAllowancePct,
         rebatePct: config.rebatePct,
         minimumTax: config.minimumTax,
@@ -240,7 +317,8 @@ export class TaxService {
   /** The month-by-month deduction ledger behind "already paid". */
   async paymentLedger(user: SessionPrincipal, fiscalYear?: string, employeeId?: string) {
     const targetId = await this.resolveTarget(user, employeeId);
-    const fy = fiscalYear ?? fiscalYearLabel(new Date());
+    const { fyStartMonth } = await this.tenantPack(user.companyId);
+    const fy = fiscalYear ?? fiscalYearLabel(new Date(), fyStartMonth);
 
     const payments = await this.prisma.taxPayment.findMany({
       where: { employeeId: targetId, fiscalYear: fy },
@@ -260,21 +338,27 @@ export class TaxService {
   }
 
   /** The published slab ladder, for the configuration screen. */
-  async configuration(fiscalYear?: string) {
-    const fy = fiscalYear ?? fiscalYearLabel(new Date());
+  async configuration(user: SessionPrincipal, fiscalYear?: string) {
+    const { pack, country, fyStartMonth } = await this.tenantPack(user.companyId);
+    const fy = fiscalYear ?? fiscalYearLabel(new Date(), fyStartMonth);
     const configs = await this.prisma.taxConfig.findMany({
-      where: { country: 'BD', fiscalYear: fy },
+      where: { country, fiscalYear: fy },
       include: { slabs: { orderBy: { seq: 'asc' } } },
       orderBy: { category: 'asc' },
     });
 
     return {
       fiscalYear: fy,
+      country: pack.code,
+      countryName: pack.name,
+      currency: pack.currency,
+      taxAuthority: pack.tax?.authority ?? null,
       categories: configs.map((config) => ({
         category: config.category,
-        categoryLabel: BD_CATEGORY_LABELS[config.category as TaxpayerCategory],
+        categoryLabel: this.categoryLabel(pack, config.category as TaxpayerCategory),
         nonTaxableDivisor: Number(config.nonTaxableDivisor),
         nonTaxableCap: Number(config.nonTaxableCap),
+        nonTaxableFlat: config.nonTaxableFlat === null ? null : Number(config.nonTaxableFlat),
         investmentAllowancePct: Number(config.investmentAllowancePct),
         rebatePct: Number(config.rebatePct),
         minimumTax: Number(config.minimumTax),
@@ -296,7 +380,8 @@ export class TaxService {
     if (!user.permissions.has(PERMISSIONS.TAX_READ_ALL)) {
       throw new ForbiddenException('You do not have permission to view company tax figures.');
     }
-    const fy = fiscalYear ?? fiscalYearLabel(new Date());
+    const { fyStartMonth } = await this.tenantPack(companyId ?? user.companyId);
+    const fy = fiscalYear ?? fiscalYearLabel(new Date(), fyStartMonth);
     const companyIds = companyFilter(user, companyId);
 
     const rows = await this.prisma.employeeTaxYear.findMany({

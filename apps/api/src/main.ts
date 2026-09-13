@@ -87,7 +87,7 @@ async function bootstrap(): Promise<void> {
     .addTag('leave', 'Applications, approvals, balances, Bradford factor')
     .addTag('holiday', 'Public holiday calendar')
     .addTag('payroll', 'Payroll runs and payslips')
-    .addTag('tax', 'Bangladesh NBR tax computation')
+    .addTag('tax', 'Income-tax computation, driven by the tenant\'s country pack')
     .addTag('performance', 'Goals, reviews, job confirmation')
     .addTag('field-force', 'Customer visits and GPS tracking')
     .addTag('onboarding', 'New joiner task checklists')

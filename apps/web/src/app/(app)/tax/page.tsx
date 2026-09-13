@@ -27,6 +27,9 @@ interface TaxStatement {
   message?: string;
   category?: string;
   categoryLabel?: string;
+  /** The authority whose rules produced these figures, from the country pack. */
+  taxAuthority?: string | null;
+  country?: string;
   employee: {
     id: number; employeeVisibleId: string; fullName: string; initials: string;
     tinNumber: string | null; designation: string | null; grade: string | null;
@@ -56,6 +59,8 @@ interface TaxStatement {
   config?: {
     nonTaxableDivisor: number;
     nonTaxableCap: number;
+    /** Flat standard deduction; set instead of the divisor/cap pair. */
+    nonTaxableFlat: number | null;
     investmentAllowancePct: number;
     rebatePct: number;
     minimumTax: number;
@@ -85,7 +90,11 @@ export default function TaxPage() {
     <>
       <PageHeader
         title="Tax calculation"
-        description="Bangladesh NBR income tax for the fiscal year, computed from your salary timeline, festival bonus, declared investment and the deduction-at-source ledger. Every step is shown so the figure on your payslip can be traced."
+        description={
+          `Income tax for the fiscal year${statement.data?.taxAuthority ? ` under ${statement.data.taxAuthority}` : ''}, `
+          + 'computed from your salary timeline, bonus, declared investment and the '
+          + 'deduction-at-source ledger. Every step is shown so the figure on your payslip can be traced.'
+        }
         breadcrumbs={[{ label: 'Pay & Tax' }, { label: 'Tax Calculation' }]}
         actions={
           <Button variant="secondary" asChild>
@@ -145,6 +154,24 @@ export default function TaxPage() {
 
 // ── the statement ─────────────────────────────────────────────────────
 
+/**
+ * Explains, in words, how the exemption was arrived at.
+ *
+ * The two shapes read completely differently to the person checking
+ * their payslip — "a third of earnings, capped" versus "a flat
+ * allowance" — so the label has to follow the config rather than
+ * describe one and hope.
+ */
+function exemptionLabel(config: TaxStatement['config']): string {
+  if (config?.nonTaxableFlat != null) {
+    return `Standard deduction — flat ${formatMoney(config.nonTaxableFlat)}`;
+  }
+  return (
+    `Non-taxable allowance — lesser of one ${ordinal(config?.nonTaxableDivisor ?? 3)} `
+    + `of earnings or ${formatMoney(config?.nonTaxableCap ?? 0)}`
+  );
+}
+
 function StatementView({ statement }: { statement: TaxStatement }) {
   const c = statement.computation!;
 
@@ -163,7 +190,7 @@ function StatementView({ statement }: { statement: TaxStatement }) {
           <StatTile
             label="Annual liability"
             value={formatMoney(c.liability)}
-            hint={c.minimumTaxApplied ? 'NBR minimum tax applied' : undefined}
+            hint={c.minimumTaxApplied ? 'Statutory minimum tax applied' : undefined}
             icon={Receipt}
             tone="warning"
           />
@@ -223,7 +250,7 @@ function StatementView({ statement }: { statement: TaxStatement }) {
           <CardHeader>
             <CardTitle>2 · Earning breakup</CardTitle>
             <p className="mt-0.5 text-xs text-ink-muted">
-              Gross is split into the statutory heads, then the festival bonus is added.
+              Gross is split into the statutory heads your country defines, then any bonus is added.
             </p>
           </CardHeader>
           <div className="overflow-x-auto">
@@ -263,7 +290,7 @@ function StatementView({ statement }: { statement: TaxStatement }) {
           </CardHeader>
           <CardContent className="space-y-2">
             <Line
-              label={`Non-taxable allowance — lesser of one ${ordinal(statement.config?.nonTaxableDivisor ?? 3)} of earnings or ${formatMoney(statement.config?.nonTaxableCap ?? 0)}`}
+              label={exemptionLabel(statement.config)}
               value={`− ${formatMoney(c.nonTaxable)}`}
             />
             <Line label="Total earning" value={formatMoney(c.totalEarning)} muted />
@@ -340,7 +367,7 @@ function StatementView({ statement }: { statement: TaxStatement }) {
             {c.minimumTaxApplied ? (
               <p className="flex items-start gap-1.5 rounded-lg bg-warning-subtle px-2.5 py-2 text-2xs text-serious">
                 <Info className="mt-0.5 size-3 shrink-0" aria-hidden />
-                The computed tax fell below the NBR minimum of{' '}
+                The computed tax fell below the statutory minimum of{' '}
                 {formatMoney(statement.config?.minimumTax ?? 0)}, so the minimum applies.
               </p>
             ) : null}
@@ -442,9 +469,10 @@ function StatementView({ statement }: { statement: TaxStatement }) {
             Why these numbers are trustworthy
           </p>
           <p className="mt-1.5 text-xs leading-relaxed text-brand-ink/80">
-            The slab ladder, the exemption divisor and the rebate percentages all live in the
-            database, versioned per fiscal year and per taxpayer category — nothing is hardcoded.
-            Superseding a budget means adding rows, not changing code.
+            The slab ladder, the exemption and the rebate percentages all live in the database,
+            versioned per fiscal year and per filing category — nothing is hardcoded, and the
+            engine never learns which country it is running. Superseding a budget means adding
+            rows, not changing code.
           </p>
         </div>
       </div>
@@ -504,7 +532,7 @@ function SlabConfiguration({ fiscalYear }: { fiscalYear: string }) {
         fiscalYear: string;
         categories: {
           category: string; categoryLabel: string;
-          nonTaxableDivisor: number; nonTaxableCap: number;
+          nonTaxableDivisor: number; nonTaxableCap: number; nonTaxableFlat: number | null;
           investmentAllowancePct: number; rebatePct: number; minimumTax: number;
           effectiveFrom: string; effectiveTo: string | null; notes: string | null;
           slabs: { seq: number; label: string | null; slabAmount: number | null; rate: number }[];

@@ -1,0 +1,91 @@
+name: Deploy demo to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    # Only rebuild when something the demo actually renders has changed.
+    paths:
+      - 'apps/web/**'
+      - 'packages/shared/**'
+      - 'brand/**'
+      - '.github/workflows/deploy-demo.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race; let an in-flight one finish rather than
+# cancelling it mid-upload and leaving Pages on a half-published version.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build static export
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check the fixture bundle is complete
+        # The demo is a recording of a real backend (see
+        # scripts/capture-demo.mjs). A missing or partial bundle still
+        # builds and deploys perfectly happily — it just publishes a site
+        # of empty screens, which reads as a broken product rather than a
+        # missing input. So check before spending a build on it.
+        run: |
+          missing=0
+          for role in md hr manager payroll field employee; do
+            for f in manifest.json auth_me.json dashboard.json; do
+              if [ ! -f "apps/web/public/demo-data/$role/$f" ]; then
+                echo "::error::apps/web/public/demo-data/$role/$f is missing"
+                missing=1
+              fi
+            done
+          done
+          if [ "$missing" = "1" ]; then
+            echo "Re-record with: npm run demo:capture (needs a seeded local stack)"
+            exit 1
+          fi
+          echo "Bundle: $(find apps/web/public/demo-data -name '*.json' | wc -l) fixtures across 6 roles"
+
+      - run: npm run build -w @kormo/shared
+
+      - name: Build
+        run: npm run build:demo -w @kormo/web
+        env:
+          NEXT_PUBLIC_DEMO_MODE: '1'
+          # Project sites are served from /<repo>; a user/org site or a
+          # custom domain would set this to an empty string.
+          NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}
+          NEXT_PUBLIC_APP_NAME: Kormo HR
+
+      - name: Disable Jekyll
+        # Pages runs Jekyll by default, which silently drops every file and
+        # directory whose name starts with an underscore — which is all of
+        # Next's `_next/` output, i.e. the entire application.
+        run: touch apps/web/out/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/out
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -2,13 +2,14 @@
   "name": "@kormo/web",
   "version": "1.0.0",
   "private": true,
-  "description": "Kormo HR — employee & manager self-service web app (Next.js App Router)",
+  "description": "Kormo HR \u2014 employee & manager self-service web app (Next.js App Router)",
   "scripts": {
-    "dev": "next dev -p ${WEB_PORT:-3000}",
     "build": "NEXT_DIST_DIR=.next-build next build",
+    "build:demo": "NEXT_PUBLIC_DEMO_MODE=1 NEXT_DIST_DIR=.next-demo next build && rm -rf out && mv .next-demo out && rm -rf .next",
+    "dev": "next dev -p ${WEB_PORT:-3000}",
+    "lint": "next lint",
     "start": "NEXT_DIST_DIR=.next-build next start -p ${WEB_PORT:-3000}",
-    "typecheck": "tsc --noEmit",
-    "lint": "next lint"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

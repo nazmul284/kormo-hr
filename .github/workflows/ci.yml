@@ -1,0 +1,147 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Matches infra/docker-compose.yml so the same commands work locally.
+  DATABASE_URL: postgresql://kormo:kormo_dev_pw@localhost:5432/kormo_hr?schema=public
+  JWT_ACCESS_SECRET: ci-access-secret-0123456789abcdef0123456789abcdef
+  JWT_REFRESH_SECRET: ci-refresh-secret-fedcba9876543210fedcba9876543210
+  STORAGE_DRIVER: local
+  NODE_ENV: test
+
+jobs:
+  # Pure functions — the tax engine, leave arithmetic, attendance
+  # formatting. No database, so this gives the fastest useful signal.
+  domain:
+    name: Domain logic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @kormo/shared
+      - run: npm run test -w @kormo/shared
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @kormo/shared
+      - run: npm run db:generate
+      - run: npm run typecheck
+
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run build
+
+  # Seeds every country pack against a real database. This is the check
+  # that catches a pack whose salary scale puts the whole workforce under
+  # the tax threshold, or whose component codes collide — neither of which
+  # a typecheck can see.
+  packs:
+    name: Country pack ${{ matrix.country }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        country: [INTL, US, GB, IN, AE, BD]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: kormo
+          POSTGRES_PASSWORD: kormo_dev_pw
+          POSTGRES_DB: kormo_hr
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U kormo -d kormo_hr"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @kormo/shared
+      - run: npm run db:generate
+      - run: npm run db:deploy
+      - name: Seed
+        run: npm run db:seed
+        env:
+          SEED_COUNTRY: ${{ matrix.country }}
+          # Pinned so a pack cannot pass only because of today's date.
+          SEED_TODAY: '2026-09-13'
+
+  # The real thing: boot the API against a seeded database and exercise
+  # every endpoint across seven roles, then the write paths end to end.
+  # Some checks assert on the response body, not just the status code —
+  # an endpoint returning 200 with a silently zeroed exemption is exactly
+  # the bug a status-only suite waves through.
+  api:
+    name: API & workflow
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: kormo
+          POSTGRES_PASSWORD: kormo_dev_pw
+          POSTGRES_DB: kormo_hr
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U kormo -d kormo_hr"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @kormo/shared
+      - run: npm run db:generate
+      - run: npm run db:deploy
+      - run: npm run db:seed
+        env:
+          SEED_TODAY: '2026-09-13'
+      - run: npm run build -w @kormo/api
+
+      - name: Start API
+        run: |
+          npm run start -w @kormo/api &
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost:4000/api/health >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          echo "API did not become healthy in 120s"; exit 1
+
+      - run: npm run verify:api
+      - run: npm run verify:workflow

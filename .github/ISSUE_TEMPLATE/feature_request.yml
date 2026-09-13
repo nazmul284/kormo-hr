@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest something the product should do
+labels: ['enhancement']
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What does someone doing HR work fail to accomplish today? Describe the
+        situation rather than the feature — the best solution is often not the
+        one first imagined.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you have tried or considered
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: I would be willing to work on this

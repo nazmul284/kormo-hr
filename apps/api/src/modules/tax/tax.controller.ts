@@ -13,15 +13,15 @@ export class TaxController {
 
   @Get('fiscal-years')
   @ApiOperation({ summary: 'Fiscal years with a published slab configuration' })
-  fiscalYears() {
-    return this.tax.fiscalYears();
+  fiscalYears(@CurrentUser() user: SessionPrincipal) {
+    return this.tax.fiscalYears(user);
   }
 
   @Get('statement')
   @RequireFeature(FEATURE_FLAGS.TAX_CALCULATION)
   @RequirePermissions(PERMISSIONS.TAX_READ_SELF, PERMISSIONS.TAX_READ_ALL)
   @ApiOperation({
-    summary: 'Full Bangladesh (NBR) tax computation for a fiscal year',
+    summary: 'Full income-tax computation for a fiscal year, per the tenant\'s country pack',
     description:
       'Recomputed live from the salary timeline, bonuses, declared investment and the '
       + 'deduction-at-source ledger. Every intermediate step is returned — gross timeline, '
@@ -52,8 +52,11 @@ export class TaxController {
     summary: 'Published slab ladder per taxpayer category',
     description: 'Data-driven: superseding a year means adding rows, never editing code.',
   })
-  configuration(@Query('fiscalYear') fiscalYear?: string) {
-    return this.tax.configuration(fiscalYear);
+  configuration(
+    @CurrentUser() user: SessionPrincipal,
+    @Query('fiscalYear') fiscalYear?: string,
+  ) {
+    return this.tax.configuration(user, fiscalYear);
   }
 
   @Get('company-summary')

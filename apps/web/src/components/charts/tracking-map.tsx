@@ -49,11 +49,18 @@ export function TrackingMap({
   const mapRef = useRef<any>(null);
   const layerRef = useRef<any>(null);
 
-  // Dhaka, as a sensible default before any data arrives.
+  /**
+   * Centre on whatever has been plotted; fall back to (0, 0) only when
+   * there is genuinely nothing to show.
+   *
+   * The fallback used to be Dhaka, which meant a tenant anywhere else saw
+   * their empty map open over Bangladesh. A null island is at least
+   * honestly nowhere, and the empty state covers it anyway.
+   */
   const resolvedCenter = useMemo<[number, number]>(() => {
     if (center) return center;
     const all = [...markers.map((m) => [m.lat, m.lng] as [number, number]), ...polylines.flatMap((p) => p.points)];
-    if (all.length === 0) return [23.7806, 90.4074];
+    if (all.length === 0) return [0, 0];
     const lat = all.reduce((sum, point) => sum + point[0], 0) / all.length;
     const lng = all.reduce((sum, point) => sum + point[1], 0) / all.length;
     return [lat, lng];
